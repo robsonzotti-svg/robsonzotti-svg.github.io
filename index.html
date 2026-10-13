@@ -844,12 +844,14 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
         🗺️ Mapa
         <input type="file" accept="*" id="mapInput" hidden onchange="loadMapFile(event)">
       </label>
+      <button class="btn btn-ghost btn-sm" id="btnSatellite" onclick="loadSatellite()" title="Baixar imagem de satélite já com coordenadas (precisa de internet)">🛰️ Satélite</button>
       <button class="btn btn-ghost btn-sm" id="btnRefitMap" onclick="refitMap()" hidden title="Encaixar mapa à vista atual">⊞</button>
       <button class="btn btn-ghost btn-sm" id="btnClearMap" onclick="clearMap()" hidden style="color:var(--red);padding:5px 8px" title="Remover mapa">✕</button>
       <button class="btn btn-ghost btn-sm" id="btnToggleMap" onclick="toggleMap()" hidden title="Mostrar/Ocultar mapa">👁</button>
       <div style="width:1px;height:20px;background:var(--border);flex-shrink:0"></div>
       <button id="btnDrawMode" class="btn btn-ghost btn-sm" onclick="toggleDrawMode()" title="Desenhar lotes sobre o mapa">✏️ Desenhar</button>
       <button id="btnScaleMode" class="btn btn-ghost btn-sm" onclick="toggleScaleMode()" title="Definir escala: clique 2 pontos com distância conhecida">📏 Escala</button>
+      <button id="btnGeorefMode" class="btn btn-ghost btn-sm" onclick="toggleGeorefMode()" title="Georreferenciar: marque 2 pontos do mapa e informe as coordenadas deles">📍 Georref.</button>
       <button id="btnEditMode" class="btn btn-ghost btn-sm" onclick="toggleEditMode()" title="Editar vértices dos lotes">↖ Editar</button>
       <button id="btnShowLots" class="btn btn-ghost btn-sm" onclick="toggleLotsPanel()" title="Lista de lotes desenhados" style="display:none">📋 Lotes</button>
       <div style="width:1px;height:20px;background:var(--border);flex-shrink:0"></div>
@@ -965,6 +967,7 @@ let mapBgWorld = null; // world-space bounding box when map was loaded {x,y,ww,h
 let drawMode = 'none'; // 'none' | 'draw' | 'edit' | 'scale'
 let metersPerUnit = null; // escala manual (sem GPS): metros por unidade do canvas
 let scalePts = [];        // pontos da calibração de escala
+let georefPts = [];       // pontos de controle do georreferenciamento [{w:{x,y}, lat, lon}]
 let drawPts = [];       // current polygon being drawn [{x,y}] world meters
 let mouseWorld = null;  // current mouse in world coords
 let lots = [];          // [{pts:[{x,y}], name, areaHaOverride}]
@@ -1453,9 +1456,12 @@ function recomputeGeometry() {
     updateStats(null);
     return;
   }
-  // Set reference to centroid
-  refLat = points.reduce((s, p) => s + p.lat, 0) / points.length;
-  refLon = points.reduce((s, p) => s + p.lon, 0) / points.length;
+  // Referência = centro dos vértices GPS (se mudar, o desenho é reposicionado para não sair do lugar)
+  const newRefLat = points.reduce((s, p) => s + p.lat, 0) / points.length;
+  const newRefLon = points.reduce((s, p) => s + p.lon, 0) / points.length;
+  if ((refLat || refLon) && (Math.abs(newRefLat - refLat) > 1e-12 || Math.abs(newRefLon - refLon) > 1e-12)) reprojectRef(newRefLat, newRefLon);
+  refLat = newRefLat;
+  refLon = newRefLon;
   localPoly = points.map(p => toLocal(p.lat, p.lon));
 
   if (points.length >= 3) {
@@ -1564,13 +1570,20 @@ function draw() {
   // Map background image — rendered at its world-space position so zoom/pan works
   if (mapBg && mapBgVisible && mapBgWorld) {
     const { sx: mx, sy: my } = worldToScreen(mapBgWorld.x, mapBgWorld.y);
-    const { sx: mx2, sy: my2 } = worldToScreen(mapBgWorld.x + mapBgWorld.ww, mapBgWorld.y - mapBgWorld.hw);
+    ctx.save();
     ctx.globalAlpha = 0.75;
-    ctx.drawImage(mapBg, mx, my, mx2 - mx, my2 - my);
-    ctx.globalAlpha = 1;
+    ctx.translate(mx, my);
+    if (mapBgWorld.rot) ctx.rotate(-mapBgWorld.rot);
+    ctx.drawImage(mapBg, 0, 0, mapBgWorld.ww * zoom, mapBgWorld.hw * zoom);
+    ctx.restore();
+    if (mapBg._attrib) {
+      ctx.font = '10px Inter, sans-serif'; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+      ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fillRect(4, H - 18, ctx.measureText(mapBg._attrib).width + 8, 15);
+      ctx.fillStyle = '#fff'; ctx.fillText(mapBg._attrib, 8, H - 5);
+    }
   }
 
-  if (localPoly.length < 2 && !(mapBg && mapBgVisible) && !lots.length && drawMode !== 'draw' && drawMode !== 'scale') {
+  if (localPoly.length < 2 && !(mapBg && mapBgVisible) && !lots.length && drawMode !== 'draw' && drawMode !== 'scale' && drawMode !== 'georef') {
     ctx.fillStyle = isDark ? '#2B5038' : '#8CBC80';
     ctx.font = '500 14px Inter, sans-serif';
     ctx.textAlign = 'center';
@@ -1589,6 +1602,8 @@ function draw() {
   } else {
     document.getElementById('scaleInfo').textContent = drawMode === 'draw' ? 'Modo: Desenhar Lote'
       : drawMode === 'scale' ? 'Modo: Definir escala'
+      : drawMode === 'georef' ? 'Modo: Georreferenciar'
+      : (refLat || refLon) ? `Escala: ${Math.round(100 / zoom)} m / 100px · 📍 com coordenadas`
       : metersPerUnit ? `Escala: ${Math.round(100 / zoom * metersPerUnit)} m / 100px` : '';
   }
 
@@ -1892,6 +1907,21 @@ function draw() {
     ctx.fillText(`📏 Escala: clique o ${scalePts.length ? '2º' : '1º'} ponto de distância conhecida`, 18, H - 23);
   }
 
+  if (drawMode === 'georef') {
+    georefPts.forEach((g, i) => {
+      const { sx, sy } = worldToScreen(g.w.x, g.w.y);
+      ctx.fillStyle = '#E05A4A'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(sx, sy, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 11px Inter, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(String(i + 1), sx, sy);
+    });
+    const hint = `📍 Clique no ponto ${georefPts.length + 1} de 2 (um lugar do mapa que você sabe a coordenada)`;
+    ctx.font = '12px Inter, sans-serif';
+    ctx.fillStyle = 'rgba(0,0,0,0.72)'; ctx.fillRect(10, H - 36, ctx.measureText(hint).width + 16, 26);
+    ctx.fillStyle = '#FF8A7A'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillText(hint, 18, H - 23);
+  }
+
   if (sim) drawSim();
   updateDrawBar();
 }
@@ -2039,6 +2069,7 @@ wrap.addEventListener('mousedown', function(e) {
     return;
   }
   if (drawMode === 'scale') { addScalePoint(screenToWorld(sx, sy)); return; }
+  if (drawMode === 'georef') { addGeorefPoint(screenToWorld(sx, sy)); return; }
   if (drawMode === 'draw') {
     if (drawPts.length >= 3) {
       const { sx: fx, sy: fy } = worldToScreen(drawPts[0].x, drawPts[0].y);
@@ -2076,7 +2107,7 @@ wrap.addEventListener('mousemove', function(e) {
     canvas.style.cursor = hoveredVtx ? 'grab' : 'default';
     draw(); return;
   }
-  if (drawMode === 'draw' || drawMode === 'scale') { draw(); return; }
+  if (drawMode === 'draw' || drawMode === 'scale' || drawMode === 'georef') { draw(); return; }
   if (drawObstMode !== 'none') { draw(); return; }
 });
 wrap.addEventListener('mouseup', function() {
@@ -2320,81 +2351,62 @@ function drawSim() {
 /* ═══════════════════════════════════════════════════════════════
    ISO-XML EXPORT
 ═══════════════════════════════════════════════════════════════ */
-function generateTaskdataXML() {
+// ── Campos para exportar (talhão GPS e/ou lotes georreferenciados) ──
+function fieldFromGPS() {
+  return { name: document.getElementById('talhao').value.trim() || 'Talhão 1', boundary: points.map(p => ({ lat: p.lat, lon: p.lon })),
+           polyM: localPoly, hl: headlandPolys, ab: abLines };
+}
+function fieldFromLot(lot) {
+  return { name: lot.name, boundary: lot.pts.map(p => toLatLon(p.x, p.y)), polyM: lot.pts, hl: lot._hlPolys || [], ab: lot._abLines || [] };
+}
+
+// Linha AB de referência = a passada mais perto do centro do talhão (no ângulo escolhido)
+function guidanceLine(polyM, ab) {
+  let cx = 0, cy = 0; polyM.forEach(p => { cx += p.x; cy += p.y; }); cx /= polyM.length; cy /= polyM.length;
+  let best = null, bd = Infinity;
+  (ab || []).forEach(l => { const d = distPointSeg({ x: cx, y: cy }, l.a, l.b); if (d < bd) { bd = d; best = l; } });
+  if (best) return [best.a, best.b];
+  const rad = abAngle * Math.PI / 180, ux = Math.sin(rad), uy = -Math.cos(rad);
+  let r = 100; polyM.forEach(p => { r = Math.max(r, Math.hypot(p.x - cx, p.y - cy)); });
+  return [{ x: cx - ux * r, y: cy - uy * r }, { x: cx + ux * r, y: cy + uy * r }];
+}
+
+// ISO 11783-10 (ISOXML): PLN 1 = contorno, PLN 10 = cabeceira, GGP/GPN tipo 1 = linha AB
+function generateTaskdataXML(fields) {
+  if (!fields) fields = points.length >= 3 ? [fieldFromGPS()] : [];
   const fazenda = document.getElementById('fazenda').value.trim() || 'Fazenda';
-  const talhao = document.getElementById('talhao').value.trim() || 'Talhão 1';
-  const areaSqm = localPoly.length >= 3 ? Math.round(calcArea(localPoly)) : 0;
-
+  const operador = document.getElementById('operador').value.trim() || 'Operador';
+  const pnt = (ll, type) => `<PNT A="${type}" C="${ll.lat.toFixed(9)}" D="${ll.lon.toFixed(9)}" />`;
+  const ring = (lls, ind) => {
+    let x = '';
+    lls.forEach(ll => { x += `${ind}${pnt(ll, 2)}\n`; });
+    if (lls.length) x += `${ind}${pnt(lls[0], 2)}\n`;
+    return x;
+  };
   let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
-  xml += `<ISO11783_TaskData VersionMajor="4" VersionMinor="2" `;
-  xml += `ManagementSoftwareManufacturer="JactoGPS" ManagementSoftwareVersion="2.0" `;
-  xml += `TaskDataDescription="${escXml(fazenda)}" `;
-  xml += `DataTransferOrigin="1">\n`;
+  xml += `<ISO11783_TaskData VersionMajor="4" VersionMinor="2" ManagementSoftwareManufacturer="JactoGPS" ManagementSoftwareVersion="2.1" DataTransferOrigin="1">\n`;
   xml += `  <CTR A="CTR1" B="${escXml(fazenda)}" />\n`;
-  xml += `  <FRM A="FRM1" B="Agricultura de Precisao" C="CTR1" />\n`;
-  xml += `  <PFD A="PFD0001" C="${escXml(talhao)}" D="${areaSqm}" E="CTR1" F="FRM1">\n`;
-
-  // External boundary
-  xml += `    <PLN A="1">\n`;
-  xml += `      <LSG A="1">\n`;
-  points.forEach(p => {
-    xml += `        <PNT A="1" C="${p.lat.toFixed(7)}" D="${p.lon.toFixed(7)}" />\n`;
-  });
-  if (points.length > 0) {
-    xml += `        <PNT A="1" C="${points[0].lat.toFixed(7)}" D="${points[0].lon.toFixed(7)}" />\n`;
-  }
-  xml += `      </LSG>\n`;
-  xml += `    </PLN>\n`;
-
-  // Headland boundaries
-  headlandPolys.forEach((hp, idx) => {
-    xml += `    <PLN A="2">\n`;
-    xml += `      <LSG A="2">\n`;
-    hp.forEach(p => {
-      const ll = toLatLon(p.x, p.y);
-      xml += `        <PNT A="1" C="${ll.lat.toFixed(7)}" D="${ll.lon.toFixed(7)}" />\n`;
+  xml += `  <FRM A="FRM1" B="${escXml(fazenda)}" I="CTR1" />\n`;
+  fields.forEach((f, i) => {
+    const n = i + 1;
+    const area = Math.round(Math.abs(polySignedArea(f.polyM)));
+    xml += `  <PFD A="PFD${n}" C="${escXml(f.name)}" D="${area}" E="CTR1" F="FRM1">\n`;
+    xml += `    <PLN A="1">\n      <LSG A="1">\n` + ring(f.boundary, '        ') + `      </LSG>\n    </PLN>\n`;
+    (f.hl || []).forEach(hp => {
+      xml += `    <PLN A="10">\n      <LSG A="1">\n` + ring(hp.map(p => toLatLon(p.x, p.y)), '        ') + `      </LSG>\n    </PLN>\n`;
     });
-    if (hp.length > 0) {
-      const ll0 = toLatLon(hp[0].x, hp[0].y);
-      xml += `        <PNT A="1" C="${ll0.lat.toFixed(7)}" D="${ll0.lon.toFixed(7)}" />\n`;
-    }
-    xml += `      </LSG>\n`;
-    xml += `    </PLN>\n`;
+    const [A, B] = guidanceLine(f.polyM, f.ab);
+    xml += `    <GGP A="GGP${n}" B="Linhas AB">\n`;
+    xml += `      <GPN A="GPN${n}" B="AB ${abAngle} graus" C="1">\n        <LSG A="5">\n`;
+    xml += `          ${pnt(toLatLon(A.x, A.y), 6)}\n          ${pnt(toLatLon(B.x, B.y), 7)}\n`;
+    xml += `        </LSG>\n      </GPN>\n    </GGP>\n`;
+    xml += `  </PFD>\n`;
   });
-
-  // Guidance pattern (AB line)
-  if (localPoly.length >= 2) {
-    const pA = localPoly[0], pB = localPoly[1];
-    const llA = toLatLon(pA.x, pA.y), llB = toLatLon(pB.x, pB.y);
-    xml += `    <GPN A="GPN1" B="Linha AB ${abAngle}graus" C="1">\n`;
-    xml += `      <LSG A="1">\n`;
-    xml += `        <PNT A="1" C="${llA.lat.toFixed(7)}" D="${llA.lon.toFixed(7)}" />\n`;
-    xml += `        <PNT A="1" C="${llB.lat.toFixed(7)}" D="${llB.lon.toFixed(7)}" />\n`;
-    xml += `      </LSG>\n`;
-    xml += `    </GPN>\n`;
-  }
-
-  xml += `  </PFD>\n`;
-
-  // Task definition for the Star 2014
-  xml += `  <TSK A="TSK1" B="${escXml(talhao + ' - Fumigacao')}" C="CTR1" D="FRM1" E="WKR1" G="1">\n`;
-  xml += `    <TZN A="TZN1">\n`;
-  xml += `      <PLN A="1">\n`;
-  xml += `        <LSG A="1">\n`;
-  points.forEach(p => {
-    xml += `          <PNT A="1" C="${p.lat.toFixed(7)}" D="${p.lon.toFixed(7)}" />\n`;
+  fields.forEach((f, i) => {
+    xml += `  <TSK A="TSK${i + 1}" B="${escXml(f.name + ' - Fumigacao')}" C="CTR1" D="FRM1" E="PFD${i + 1}" F="WKR1" G="1" />\n`;
   });
-  if (points.length > 0) {
-    xml += `          <PNT A="1" C="${points[0].lat.toFixed(7)}" D="${points[0].lon.toFixed(7)}" />\n`;
-  }
-  xml += `        </LSG>\n`;
-  xml += `      </PLN>\n`;
-  xml += `    </TZN>\n`;
-  xml += `  </TSK>\n`;
-
-  xml += `  <WKR A="WKR1" B="${escXml(document.getElementById('operador').value || 'Operador')}" />\n`;
+  xml += `  <WKR A="WKR1" B="${escXml(operador)}" />\n`;
   xml += `</ISO11783_TaskData>`;
-
   return xml;
 }
 
@@ -2406,33 +2418,54 @@ function escXml(s) {
     .replace(/"/g, '&quot;');
 }
 
-function exportTaskdata() {
-  if (points.length < 3) {
-    showToast('Adicione pelo menos 3 vértices antes de exportar', true);
-    return;
-  }
-  const xml = generateTaskdataXML();
-  const talhao = document.getElementById('talhao').value.replace(/\s+/g, '_');
+function buildTaskdataZip(fields, baseName) {
+  const xml = generateTaskdataXML(fields);
+  const lista = fields.map(f => {
+    const ha = Math.abs(polySignedArea(f.polyM)) / 10000;
+    return `  - ${f.name}: ${ha.toFixed(2).replace('.', ',')} ha, ${Math.round(calcPerimeter(f.polyM))} m de perímetro`;
+  }).join('\n');
   const readme = `JACTO GPS - TASKDATA ISO 11783\n${'='.repeat(40)}\n\n` +
-    `Talhão  : ${document.getElementById('talhao').value}\n` +
     `Fazenda : ${document.getElementById('fazenda').value}\n` +
+    `Talhões :\n${lista}\n\n` +
     `Faixa   : ${swathWidth} m\n` +
     `Vel.    : ${workSpeed} km/h\n` +
     `Ângulo  : ${abAngle}°\n` +
     `Cabec.  : ${headlandPasses} passada(s)\n\n` +
     `Gerado em: ${new Date().toLocaleString('pt-BR')}\n\n` +
     `INSTRUÇÕES:\n` +
-    `1. Extraia a pasta TASKDATA para um pen drive FAT32\n` +
+    `1. Copie a pasta TASKDATA (inteira) para a raiz de um pen drive FAT32\n` +
     `2. Insira o pen drive no terminal Jacto Star 2014\n` +
     `3. Selecione o talhão no menu de tarefas\n`;
   const zipBytes = createZip([
     { name: 'TASKDATA/TASKDATA.XML', content: xml },
     { name: 'TASKDATA/LEIAME.TXT',   content: readme }
   ]);
-  const blob = new Blob([zipBytes], { type: 'application/zip' });
-  triggerDownload(blob, `TASKDATA_${talhao}.zip`);
-  showToast('TASKDATA.ZIP gerado! Confirme o download e copie para o pen drive.');
+  triggerDownload(new Blob([zipBytes], { type: 'application/zip' }), `TASKDATA_${safeFileName(baseName)}.zip`);
 }
+
+function exportTaskdata() {
+  const fields = [];
+  if (points.length >= 3) fields.push(fieldFromGPS());
+  const geo = refLat !== 0 || refLon !== 0;
+  if (lots.length && geo) lots.forEach(l => { if (l.pts.length >= 3) fields.push(fieldFromLot(l)); });
+  if (!fields.length) {
+    showToast(lots.length
+      ? 'Os lotes ainda não têm coordenadas: use 🛰️ Satélite ou 📍 Georref. antes de exportar'
+      : 'Adicione os vértices GPS ou desenhe um lote georreferenciado antes de exportar', true);
+    return;
+  }
+  buildTaskdataZip(fields, fields.length === 1 ? fields[0].name : (document.getElementById('fazenda').value || 'talhoes'));
+  showToast(`TASKDATA.ZIP gerado (${fields.length} talhão${fields.length > 1 ? 'ões' : ''}). Copie a pasta TASKDATA para o pen drive.`);
+}
+
+function exportLotTaskdata(i) {
+  const lot = lots[i];
+  if (!lot || lot.pts.length < 3) return;
+  if (!(refLat || refLon)) { showToast('Este lote ainda não tem coordenadas: use 🛰️ Satélite ou 📍 Georref. primeiro', true); return; }
+  buildTaskdataZip([fieldFromLot(lot)], lot.name);
+  showToast('TASKDATA de "' + lot.name + '" gerado. Copie a pasta TASKDATA para o pen drive.');
+}
+
 function exportCSV() {
   if (!points.length) { showToast('Nenhum vértice para exportar', true); return; }
   let csv = 'Vertice,Latitude,Longitude\n';
@@ -2458,7 +2491,7 @@ function mapSnapshot() {
     const c = document.createElement('canvas');
     c.width = Math.round(w0 * k); c.height = Math.round(h0 * k);
     c.getContext('2d').drawImage(mapBg, 0, 0, c.width, c.height);
-    return { src: c.toDataURL('image/jpeg', 0.85), world: mapBgWorld, visible: mapBgVisible };
+    return { src: c.toDataURL('image/jpeg', 0.85), world: mapBgWorld, visible: mapBgVisible, attrib: mapBg._attrib || null };
   } catch (err) { return null; }
 }
 
@@ -2467,6 +2500,7 @@ function restoreMap(m) {
   const img = new Image();
   img.onload = () => {
     mapBg = img; mapBgWorld = m.world; mapBgVisible = m.visible !== false;
+    if (m.attrib) img._attrib = m.attrib;
     document.getElementById('btnClearMap').hidden = false;
     document.getElementById('btnRefitMap').hidden = false;
     document.getElementById('btnToggleMap').hidden = false;
@@ -2485,6 +2519,7 @@ function saveJactoFile() {
     swathWidth, workSpeed, abAngle, headlandPasses,
     points,
     lots, metersPerUnit, stoneMarkers, windrowLines,
+    geoRef: (refLat || refLon) ? { lat: refLat, lon: refLon } : null,
     view: { zoom, panX, panY },
     map: mapSnapshot(),
     createdAt: new Date().toISOString()
@@ -2530,6 +2565,7 @@ function lotProjectData(lot, map) {
     points: hasGPS ? points : [],
     lots: [{ pts: lot.pts, name: lot.name, areaHaOverride: lot.areaHaOverride }],
     metersPerUnit: hasGPS ? metersPerUnit : k,   // guarda a escala usada, mesmo se veio da área exata de outro lote
+    geoRef: hasGPS ? { lat: refLat, lon: refLon } : null,
     stoneMarkers: [], windrowLines: [],
     view, map,
     resumo: { lote: lot.name, area_ha: ha !== null ? +ha.toFixed(2) : null, perimetro_m: perim !== null ? Math.round(perim) : null, vertices: lot.pts.length },
@@ -2577,6 +2613,13 @@ function loadJactoFile(e) {
         points = data.points;
         lots = Array.isArray(data.lots) ? data.lots.map(l => ({ pts: l.pts || [], name: l.name || 'Lote', areaHaOverride: l.areaHaOverride ?? null })) : [];
         metersPerUnit = data.metersPerUnit || null;
+        // referência de coordenadas do arquivo (sem reposicionar o que acabou de ser lido)
+        if (points.length >= 2) {
+          refLat = points.reduce((s, p) => s + p.lat, 0) / points.length;
+          refLon = points.reduce((s, p) => s + p.lon, 0) / points.length;
+        } else if (data.geoRef && isFinite(data.geoRef.lat) && isFinite(data.geoRef.lon)) {
+          refLat = data.geoRef.lat; refLon = data.geoRef.lon;
+        } else { refLat = 0; refLon = 0; }
         stoneMarkers = Array.isArray(data.stoneMarkers) ? data.stoneMarkers : [];
         windrowLines = Array.isArray(data.windrowLines) ? data.windrowLines : [];
         document.getElementById('btnClearObst').style.display = (stoneMarkers.length || windrowLines.length) ? '' : 'none';
@@ -2779,6 +2822,7 @@ function clearMap() {
 
 function refitMap() {
   if (!mapBg) return;
+  if (mapBgWorld && mapBgWorld.geo && !confirm('Este mapa está georreferenciado (no lugar certo). Encaixar vai tirá-lo do lugar. Continuar?')) return;
   captureMapBgWorld();
   draw();
   showToast('Mapa encaixado à vista atual');
@@ -2888,6 +2932,172 @@ document.addEventListener('keydown', e => {
   }
 });
 
+/* ── Coordenadas: georreferenciar mapa/desenho e satélite ─────── */
+function parseLatLon(str) {
+  let s = String(str || '').trim().replace(/[()°]/g, '');
+  if (!s) return null;
+  let parts;
+  if (s.includes(';')) parts = s.split(';');
+  else if (/^\S+\s+\S+$/.test(s) && !/\d,\s/.test(s)) parts = s.split(/\s+/);
+  else parts = s.split(/,\s*/);
+  if (parts.length !== 2) return null;
+  const [lat, lon] = parts.map(x => parseFloat(x.trim().replace(',', '.')));
+  if (!isFinite(lat) || !isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;
+  return { lat, lon };
+}
+
+// Aplica uma transformação a tudo que está desenhado (lotes, marcadores, mapa e vista)
+function transformWorld(T, s, theta) {
+  const tp = p => { const q = T(p); p.x = q.x; p.y = q.y; };
+  lots.forEach(l => l.pts.forEach(tp));
+  stoneMarkers.forEach(tp);
+  windrowLines.forEach(w => w.pts.forEach(tp));
+  drawPts.forEach(tp);
+  if (mapBgWorld) {
+    const q = T({ x: mapBgWorld.x, y: mapBgWorld.y });
+    mapBgWorld = { x: q.x, y: q.y, ww: mapBgWorld.ww * s, hw: mapBgWorld.hw * s, rot: (mapBgWorld.rot || 0) + theta, geo: true };
+  }
+  const c = T({ x: panX, y: panY }); panX = c.x; panY = c.y; zoom /= s;
+}
+
+// Troca o ponto de referência das coordenadas sem tirar nada do lugar
+function reprojectRef(newLat, newLon) {
+  const items = [];
+  const keep = p => items.push([p, toLatLon(p.x, p.y)]);
+  lots.forEach(l => l.pts.forEach(keep));
+  stoneMarkers.forEach(keep);
+  windrowLines.forEach(w => w.pts.forEach(keep));
+  drawPts.forEach(keep);
+  const mapLL = mapBgWorld ? toLatLon(mapBgWorld.x, mapBgWorld.y) : null;
+  const viewLL = toLatLon(panX, panY);
+  refLat = newLat; refLon = newLon;
+  items.forEach(([p, ll]) => { const q = toLocal(ll.lat, ll.lon); p.x = q.x; p.y = q.y; });
+  if (mapLL) { const q = toLocal(mapLL.lat, mapLL.lon); mapBgWorld.x = q.x; mapBgWorld.y = q.y; }
+  const v = toLocal(viewLL.lat, viewLL.lon); panX = v.x; panY = v.y;
+}
+
+function toggleGeorefMode() {
+  exitObstModes();
+  drawMode = drawMode === 'georef' ? 'none' : 'georef';
+  georefPts = []; drawPts = []; scalePts = []; selVtx = null;
+  updateDrawUI(); draw();
+  if (drawMode === 'georef') showToast('📍 Clique em 2 pontos do mapa que você sabe a coordenada (ex.: cantos do lote, encontro de estradas)');
+}
+
+function addGeorefPoint(w) {
+  const n = georefPts.length + 1;
+  georefPts.push({ w, lat: null, lon: null });
+  draw();
+  const resp = prompt(`Coordenadas do ponto ${n} (latitude, longitude)\n\nNo Google Maps: clique com o botão direito no MESMO lugar e clique nos números para copiar.\nEx.: -17.78312, -63.18201`, '');
+  if (resp === null) { georefPts = []; drawMode = 'none'; updateDrawUI(); draw(); showToast('Georreferenciamento cancelado'); return; }
+  const ll = parseLatLon(resp);
+  if (!ll) { georefPts.pop(); draw(); showToast('Coordenada inválida. Use o formato: -17.78312, -63.18201 — clique no ponto de novo', true); return; }
+  georefPts[n - 1].lat = ll.lat; georefPts[n - 1].lon = ll.lon;
+  if (georefPts.length < 2) { draw(); return; }
+  applyGeoref();
+}
+
+function applyGeoref() {
+  const [A, B] = georefPts;
+  const dwx = B.w.x - A.w.x, dwy = B.w.y - A.w.y;
+  const prevLat = refLat, prevLon = refLon;
+  if (!(refLat || refLon)) { refLat = A.lat; refLon = A.lon; }
+  const mA = toLocal(A.lat, A.lon), mB = toLocal(B.lat, B.lon);
+  const dmx = mB.x - mA.x, dmy = mB.y - mA.y;
+  const Lw = Math.hypot(dwx, dwy), Lm = Math.hypot(dmx, dmy);
+  georefPts = []; drawMode = 'none'; updateDrawUI();
+  if (Lw < 1e-9 || Lm < 5) {
+    refLat = prevLat; refLon = prevLon; draw();
+    showToast('Os 2 pontos estão muito perto um do outro. Escolha pontos bem afastados (de preferência em lados opostos).', true);
+    return;
+  }
+  const sc = Lm / Lw, th = Math.atan2(dmy, dmx) - Math.atan2(dwy, dwx);
+  const c = Math.cos(th), sn = Math.sin(th);
+  const T = p => ({ x: mA.x + sc * (c * (p.x - A.w.x) - sn * (p.y - A.w.y)), y: mA.y + sc * (sn * (p.x - A.w.x) + c * (p.y - A.w.y)) });
+  const hadGPSframe = prevLat || prevLon;
+  transformWorld(T, sc, th);
+  metersPerUnit = null;
+  recomputeLotLines(); renderLotsList(); scheduleRender(); draw();
+  if (sim) rebuildSim();
+  // aviso se a área exata digitada não bate com a área real
+  const avisos = lots.filter(l => l.areaHaOverride > 0 && l.pts.length >= 3).map(l => {
+    const real = Math.abs(polySignedArea(l.pts)) / 10000;
+    return Math.abs(real - l.areaHaOverride) / l.areaHaOverride > 0.05 ? `${l.name}: ${real.toFixed(2)} ha pelas coordenadas (você digitou ${l.areaHaOverride.toFixed(2)})` : null;
+  }).filter(Boolean);
+  const giro = Math.round(th * 180 / Math.PI * 10) / 10;
+  showToast('📍 Georreferenciado ✓' + (hadGPSframe ? '' : '') + ` — giro ${giro}°` + (avisos.length ? ' · Confira: ' + avisos.join('; ') : ''));
+}
+
+// Imagem de satélite (Esri World Imagery) já com coordenadas
+async function loadSatellite() {
+  const hasRef = refLat !== 0 || refLon !== 0;
+  if (!hasRef && lots.length) {
+    showToast('Os lotes desenhados ainda não têm localização. Use 📍 Georref. no mapa atual (ou limpe os lotes) antes de trocar para o satélite.', true);
+    return;
+  }
+  const def = hasRef ? refLat.toFixed(6) + ', ' + refLon.toFixed(6) : '';
+  const s = prompt('Coordenadas do centro da área (latitude, longitude)\nEx.: -17.78312, -63.18201\n(Google Maps: botão direito no lugar → clique nos números para copiar)'
+    + (navigator.geolocation ? '\n\nDeixe vazio para usar a sua localização atual.' : ''), def);
+  if (s === null) return;
+  let c;
+  if (!s.trim() && navigator.geolocation) {
+    showToast('Obtendo sua localização…');
+    c = await new Promise(res => navigator.geolocation.getCurrentPosition(
+      p => res({ lat: p.coords.latitude, lon: p.coords.longitude }), () => res(null), { enableHighAccuracy: true, timeout: 15000 }));
+    if (!c) { showToast('Não foi possível obter a localização. Digite as coordenadas.', true); return; }
+  } else {
+    c = parseLatLon(s);
+    if (!c) { showToast('Coordenadas inválidas. Use o formato: -17.78312, -63.18201', true); return; }
+  }
+  const kmTxt = prompt('Tamanho da área em km (lado do quadrado, de 0,5 a 8):', '3');
+  if (kmTxt === null) return;
+  const km = parseFloat(String(kmTxt).replace(',', '.'));
+  if (!(km > 0)) { showToast('Tamanho inválido', true); return; }
+  showToast('Baixando imagem de satélite…');
+  try { await buildSatellite(c, Math.min(8, Math.max(0.3, km))); }
+  catch (e) { showToast('Não foi possível baixar o satélite: ' + (e.message || e), true); }
+}
+
+async function buildSatellite(c, sizeKm) {
+  const latR = c.lat * Math.PI / 180;
+  let z = 18;
+  const mppAt = zz => 156543.03392 * Math.cos(latR) / Math.pow(2, zz);
+  while (z > 3 && sizeKm * 1000 / mppAt(z) > 4096) z--;
+  const mpp = mppAt(z), n = Math.pow(2, z), T = 256;
+  const cx = (c.lon + 180) / 360 * n * T;
+  const cy = (1 - Math.log(Math.tan(latR) + 1 / Math.cos(latR)) / Math.PI) / 2 * n * T;
+  const half = Math.round(sizeKm * 500 / mpp);
+  const x0 = Math.round(cx - half), y0 = Math.round(cy - half), W = 2 * half, H = 2 * half;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const g = cv.getContext('2d'); g.fillStyle = '#25331f'; g.fillRect(0, 0, W, H);
+  const jobs = []; let fails = 0;
+  for (let ty = Math.floor(y0 / T); ty <= Math.floor((y0 + H - 1) / T); ty++) {
+    for (let tx = Math.floor(x0 / T); tx <= Math.floor((x0 + W - 1) / T); tx++) {
+      jobs.push(new Promise(res => {
+        const im = new Image(); im.crossOrigin = 'anonymous';
+        im.onload = () => { g.drawImage(im, tx * T - x0, ty * T - y0); res(); };
+        im.onerror = () => { fails++; res(); };
+        im.src = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${((ty % n) + n) % n}/${((tx % n) + n) % n}`;
+      }));
+    }
+  }
+  await Promise.all(jobs);
+  if (fails === jobs.length) throw new Error('sem conexão com o servidor de imagens');
+  const px2ll = (px, py) => ({ lon: px / (n * T) * 360 - 180, lat: Math.atan(Math.sinh(Math.PI * (1 - 2 * py / (n * T)))) * 180 / Math.PI });
+  if (!(refLat || refLon)) { refLat = c.lat; refLon = c.lon; }
+  const tl = px2ll(x0, y0), tlm = toLocal(tl.lat, tl.lon);
+  cv._attrib = 'Imagens © Esri, Maxar, Earthstar Geographics';
+  mapBg = cv; mapBgVisible = true;
+  mapBgWorld = { x: tlm.x, y: tlm.y, ww: W * mpp, hw: H * mpp, rot: 0, geo: true };
+  metersPerUnit = null;
+  ['btnClearMap', 'btnRefitMap', 'btnToggleMap'].forEach(id => { document.getElementById(id).hidden = false; });
+  document.getElementById('btnToggleMap').textContent = '👁';
+  zoom = Math.min(canvas.clientWidth / (W * mpp), canvas.clientHeight / (H * mpp));
+  panX = tlm.x + W * mpp / 2; panY = tlm.y - H * mpp / 2;
+  recomputeLotLines(); renderLotsList(); scheduleRender(); draw();
+  showToast(`🛰️ Satélite carregado (${String(sizeKm).replace('.', ',')} km) já com coordenadas — desenhe os lotes em cima` + (fails ? ` · ${fails} pedaço(s) não baixaram` : ''));
+}
+
 function updateDrawUI() {
   const btnD = document.getElementById('btnDrawMode');
   const btnE = document.getElementById('btnEditMode');
@@ -2895,6 +3105,12 @@ function updateDrawUI() {
     btnD.style.background = drawMode === 'draw' ? 'var(--amber)' : '';
     btnD.style.color = drawMode === 'draw' ? '#0B1810' : '';
     btnD.style.borderColor = drawMode === 'draw' ? 'var(--amber)' : '';
+  }
+  const btnG = document.getElementById('btnGeorefMode');
+  if (btnG) {
+    btnG.style.background = drawMode === 'georef' ? '#E05A4A' : '';
+    btnG.style.color = drawMode === 'georef' ? '#fff' : '';
+    btnG.style.borderColor = drawMode === 'georef' ? '#E05A4A' : '';
   }
   const btnS = document.getElementById('btnScaleMode');
   if (btnS) {
@@ -2907,7 +3123,7 @@ function updateDrawUI() {
     btnE.style.color = drawMode === 'edit' ? '#fff' : '';
     btnE.style.borderColor = drawMode === 'edit' ? 'var(--accentd)' : '';
   }
-  canvas.style.cursor = panMode ? 'grab' : ((drawMode === 'draw' || drawMode === 'scale') ? 'crosshair' : 'default');
+  canvas.style.cursor = panMode ? 'grab' : ((drawMode === 'draw' || drawMode === 'scale' || drawMode === 'georef') ? 'crosshair' : 'default');
 }
 
 function finishDrawing() {
@@ -3043,7 +3259,10 @@ function renderLotsList() {
       + '<div style="display:flex;gap:6px;align-items:center;margin-top:6px">'
       + '<span style="font-size:11px;color:var(--text2);min-width:90px">📏 Perímetro:</span>'
       + '<span style="font-size:12px;color:var(--text2);font-variant-numeric:tabular-nums">' + (lotPerimM(lot) !== null ? Math.round(lotPerimM(lot)).toLocaleString('pt-BR') + ' m' : '—') + '</span>'
-      + '<button class="btn btn-ghost btn-sm" onclick="saveLotFile(' + i + ')" style="margin-left:auto;padding:3px 8px" title="Salvar só este lote em um arquivo .jacto">💾 Salvar</button>'
+      + '</div>'
+      + '<div style="display:flex;gap:6px;margin-top:6px;justify-content:flex-end">'
+      + '<button class="btn btn-ghost btn-sm" onclick="saveLotFile(' + i + ')" style="padding:3px 8px" title="Salvar só este lote em um arquivo .jacto">💾 Salvar</button>'
+      + '<button class="btn btn-ghost btn-sm" onclick="exportLotTaskdata(' + i + ')" style="padding:3px 8px" title="TASKDATA para o pendrive do GPS Jacto (precisa do lote georreferenciado)">🚜 Exportar p/ Jacto</button>'
       + '</div>'
       + '</div>';
   }).join('');
