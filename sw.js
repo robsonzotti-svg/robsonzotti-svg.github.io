@@ -1,4 +1,4 @@
-const CACHE = 'jacto-gps-v14';
+const CACHE = 'jacto-gps-v15';
 const PRECACHE = [
   '/',
   '/index.html',
@@ -31,6 +31,7 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   const url = new URL(e.request.url);
+  if (url.hostname.endsWith('arcgisonline.com')) return; // imagens de satélite: não guardar no cache do app
   const isPage = e.request.mode === 'navigate' ||
     (url.origin === self.location.origin && (url.pathname === '/' || url.pathname.endsWith('.html') || url.pathname.endsWith('.json')));
 
