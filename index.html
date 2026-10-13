@@ -979,6 +979,8 @@ let mouseWorld = null;  // current mouse in world coords
 let lots = [];          // [{pts:[{x,y}], name, areaHaOverride}]
 let dragInfo = null;    // {lotIdx, vtxIdx}
 let hoveredVtx = null;
+let hoveredMid = null;   // meio de lado sob o mouse (modo editar)
+let lastFinishT = 0;     // hora em que o último lote foi fechado
 let selVtx = null;      // vértice selecionado no modo Editar {lotIdx, vtxIdx}
 const LOT_COLORS = ['#F0A030','#3090E0','#E03060','#A020F0','#30D0A0','#F0D020'];
 
@@ -1780,6 +1782,19 @@ function draw() {
         ctx.arc(sx, sy, isSel ? 9 : (isHov ? 8 : 6), 0, Math.PI * 2);
         ctx.fill(); ctx.stroke();
       });
+      // "+" no meio de cada lado: arraste para criar um ponto novo ali
+      lot.pts.forEach((p, vi) => {
+        const q = lot.pts[(vi + 1) % lot.pts.length];
+        const a = worldToScreen(p.x, p.y), b = worldToScreen(q.x, q.y);
+        if (Math.hypot(b.sx - a.sx, b.sy - a.sy) < 40) return;
+        const mx = (a.sx + b.sx) / 2, my = (a.sy + b.sy) / 2;
+        const isHov = hoveredMid && hoveredMid.lotIdx === li && hoveredMid.insertAt === vi + 1;
+        ctx.fillStyle = isHov ? '#fff' : 'rgba(255,255,255,0.55)';
+        ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(mx, my, isHov ? 7 : 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(mx - 3, my); ctx.lineTo(mx + 3, my); ctx.moveTo(mx, my - 3); ctx.lineTo(mx, my + 3);
+        ctx.strokeStyle = 'rgba(0,0,0,0.75)'; ctx.stroke();
+      });
     }
     if (lot.pts.length >= 3) {
       let lx = 0, ly = 0;
@@ -1888,6 +1903,21 @@ function draw() {
     });
     if (mouseWorld) { const { sx, sy } = worldToScreen(mouseWorld.x, mouseWorld.y); ctx.lineTo(sx, sy); }
     ctx.stroke(); ctx.setLineDash([]);
+    // como o lote vai fechar: linha fina do último ponto (ou do mouse) até o ponto inicial
+    if (drawPts.length >= 2) {
+      const f = worldToScreen(drawPts[0].x, drawPts[0].y);
+      const e = mouseWorld ? worldToScreen(mouseWorld.x, mouseWorld.y) : worldToScreen(drawPts[drawPts.length - 1].x, drawPts[drawPts.length - 1].y);
+      ctx.strokeStyle = color; ctx.globalAlpha = 0.55; ctx.lineWidth = 1.2; ctx.setLineDash([2, 5]);
+      ctx.beginPath(); ctx.moveTo(e.sx, e.sy); ctx.lineTo(f.sx, f.sy); ctx.stroke();
+      ctx.setLineDash([]); ctx.globalAlpha = 1;
+      if (mouseWorld && drawPts.length >= 3) {
+        const m = worldToScreen(mouseWorld.x, mouseWorld.y);
+        if (Math.hypot(m.sx - f.sx, m.sy - f.sy) < 18) {
+          ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5;
+          ctx.beginPath(); ctx.arc(f.sx, f.sy, 13, 0, Math.PI * 2); ctx.stroke();
+        }
+      }
+    }
     drawPts.forEach((p, i) => {
       const { sx, sy } = worldToScreen(p.x, p.y);
       ctx.fillStyle = i === 0 ? '#fff' : color;
@@ -1895,8 +1925,8 @@ function draw() {
       ctx.beginPath(); ctx.arc(sx, sy, i === 0 ? 7 : 4, 0, Math.PI * 2);
       ctx.fill(); ctx.stroke();
     });
-    const hint = W < 600 ? `Toque para adicionar pontos (${drawPts.length} pts)`
-                         : `Clique para adicionar pontos · Backspace desfaz · Duplo clique fecha (${drawPts.length} pts)`;
+    const hint = W < 600 ? `Toque nos cantos, na ordem · ✓ Fechar lote no fim (${drawPts.length} pts)`
+                         : `Clique nos cantos, na ordem, em volta do lote · a linha pontilhada mostra como vai fechar · Backspace desfaz · Duplo clique ou ✓ fecha (${drawPts.length} pts)`;
     ctx.font = '12px Inter, sans-serif';
     ctx.fillStyle = 'rgba(0,0,0,0.72)';
     ctx.fillRect(10, H - 36, ctx.measureText(hint).width + 16, 26);
@@ -2008,7 +2038,8 @@ wrap.addEventListener('touchstart', e => {
     const p = touchPos(e.touches[0]);
     touchPan = { x: p.sx, y: p.sy, moved: false };
     if (drawMode === 'edit') {
-      const hit = findHoveredVertex(p.sx, p.sy, 22);
+      let hit = findHoveredVertex(p.sx, p.sy, 22);
+      if (!hit) { const m = findEdgeMid(p.sx, p.sy, 20); if (m) hit = insertMidVertex(m); }
       selVtx = hit || null;
       if (hit) { dragInfo = hit; touchPan.vertex = true; }
       draw();
@@ -2068,6 +2099,35 @@ function findHoveredVertex(sx, sy, r) {
     }
   return null;
 }
+// Meio de um lado (modo editar): devolve onde inserir um ponto novo
+function findEdgeMid(sx, sy, r) {
+  r = r || 10;
+  for (let li = lots.length - 1; li >= 0; li--) {
+    const P = lots[li].pts;
+    for (let vi = 0; vi < P.length; vi++) {
+      const q = P[(vi + 1) % P.length];
+      const a = worldToScreen(P[vi].x, P[vi].y), b = worldToScreen(q.x, q.y);
+      if (Math.hypot(b.sx - a.sx, b.sy - a.sy) < 40) continue;
+      if (Math.hypot(sx - (a.sx + b.sx) / 2, sy - (a.sy + b.sy) / 2) < r)
+        return { lotIdx: li, insertAt: vi + 1, pt: { x: (P[vi].x + q.x) / 2, y: (P[vi].y + q.y) / 2 } };
+    }
+  }
+  return null;
+}
+function insertMidVertex(m) {
+  lots[m.lotIdx].pts.splice(m.insertAt, 0, { x: m.pt.x, y: m.pt.y });
+  lots[m.lotIdx].areaHaOverride = null;
+  hoveredMid = null;
+  return { lotIdx: m.lotIdx, vtxIdx: m.insertAt };
+}
+// Limpa pontos repetidos (duplo clique, toque duplo) antes de fechar o lote
+function tidyDrawPts(pts, px) {
+  const tol = (px || 6) / zoom;
+  const out = [];
+  pts.forEach(p => { const q = out[out.length - 1]; if (!q || Math.hypot(p.x - q.x, p.y - q.y) > tol) out.push(p); });
+  while (out.length > 3 && Math.hypot(out[0].x - out[out.length - 1].x, out[0].y - out[out.length - 1].y) <= tol) out.pop();
+  return out;
+}
 wrap.addEventListener('mousedown', function(e) {
   if (e.button !== 0) return;
   const { sx, sy } = getCanvasPos(e);
@@ -2088,6 +2148,7 @@ wrap.addEventListener('mousedown', function(e) {
   if (drawMode === 'scale') { addScalePoint(screenToWorld(sx, sy)); return; }
   if (drawMode === 'georef') { addGeorefPoint(screenToWorld(sx, sy)); return; }
   if (drawMode === 'draw') {
+    if (e.detail >= 2 && Date.now() - lastFinishT < 800) return;   // 2º clique do duplo clique que fechou o lote
     if (drawPts.length >= 3) {
       const { sx: fx, sy: fy } = worldToScreen(drawPts[0].x, drawPts[0].y);
       if (Math.hypot(sx - fx, sy - fy) < 18) { finishDrawing(); return; }
@@ -2096,7 +2157,8 @@ wrap.addEventListener('mousedown', function(e) {
     draw(); return;
   }
   if (drawMode === 'edit') {
-    const hit = findHoveredVertex(sx, sy);
+    let hit = findHoveredVertex(sx, sy);
+    if (!hit) { const m = findEdgeMid(sx, sy, 10); if (m) hit = insertMidVertex(m); }
     selVtx = hit || null;
     if (hit) { dragInfo = hit; canvas.style.cursor = 'grabbing'; }
     draw();
@@ -2121,7 +2183,8 @@ wrap.addEventListener('mousemove', function(e) {
   }
   if (drawMode === 'edit') {
     hoveredVtx = findHoveredVertex(sx, sy);
-    canvas.style.cursor = hoveredVtx ? 'grab' : 'default';
+    hoveredMid = hoveredVtx ? null : findEdgeMid(sx, sy, 10);
+    canvas.style.cursor = hoveredVtx ? 'grab' : (hoveredMid ? 'copy' : 'default');
     draw(); return;
   }
   if (drawMode === 'draw' || drawMode === 'scale' || drawMode === 'georef') { draw(); return; }
@@ -2158,6 +2221,7 @@ wrap.addEventListener('dblclick', function(e) {
     return;
   }
   if (drawMode !== 'draw') return;
+  if (Date.now() - lastFinishT < 800) return;   // já fechou no 1º clique (em cima do ponto inicial)
   if (drawPts.length >= 3) finishDrawing();
 });
 
@@ -2898,8 +2962,9 @@ function toggleEditMode() {
   exitObstModes();
   selVtx = null;
   drawMode = drawMode === 'edit' ? 'none' : 'edit';
-  drawPts = []; hoveredVtx = null; dragInfo = null;
+  drawPts = []; hoveredVtx = null; hoveredMid = null; dragInfo = null;
   updateDrawUI(); draw();
+  if (drawMode === 'edit') showToast('Editar: arraste os pontos · arraste o ⊕ do meio de um lado para criar um ponto novo · Delete apaga o ponto');
 }
 
 /* ── Desfazer / apagar ──────────────────────────────────────── */
@@ -3278,7 +3343,9 @@ function updateDrawUI() {
 }
 
 function finishDrawing() {
-  if (drawPts.length < 3) { showToast('Adicione pelo menos 3 pontos', true); return; }
+  drawPts = tidyDrawPts(drawPts);
+  if (drawPts.length < 3) { showToast('Adicione pelo menos 3 pontos', true); draw(); return; }
+  lastFinishT = Date.now();
   const name = 'Lote ' + (lots.length + 1);
   lots.push({ pts: drawPts.slice(), name, areaHaOverride: null });
   recomputeLotLines();
