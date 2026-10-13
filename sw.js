@@ -1,4 +1,4 @@
-const CACHE = 'jacto-gps-v16';
+const CACHE = 'jacto-gps-v17';
 const PRECACHE = [
   '/',
   '/index.html',
