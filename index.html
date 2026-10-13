@@ -987,19 +987,28 @@ let windrowPts = []; // windrow being drawn
 ═══════════════════════════════════════════════════════════════ */
 const R_EARTH = 6371000;
 
+// Raios de curvatura do elipsoide WGS84 na latitude de referência (mais preciso que uma esfera)
+function wgs84Radii(latDeg) {
+  const A = 6378137.0, E2 = 0.00669437999014, sl = Math.sin(latDeg * Math.PI / 180);
+  const w = 1 - E2 * sl * sl;
+  return { M: A * (1 - E2) / Math.pow(w, 1.5), N: A / Math.sqrt(w) };
+}
+
 function toLocal(lat, lon) {
   if (!refLat && !refLon) return { x: 0, y: 0 };
+  const { M, N } = wgs84Radii(refLat);
   const dLat = (lat - refLat) * Math.PI / 180;
   const dLon = (lon - refLon) * Math.PI / 180;
   return {
-    x: dLon * Math.cos(refLat * Math.PI / 180) * R_EARTH,
-    y: dLat * R_EARTH
+    x: dLon * Math.cos(refLat * Math.PI / 180) * N,
+    y: dLat * M
   };
 }
 
 function toLatLon(x, y) {
-  const lat = refLat + (y / R_EARTH) * (180 / Math.PI);
-  const lon = refLon + (x / (R_EARTH * Math.cos(refLat * Math.PI / 180))) * (180 / Math.PI);
+  const { M, N } = wgs84Radii(refLat);
+  const lat = refLat + (y / M) * (180 / Math.PI);
+  const lon = refLon + (x / (N * Math.cos(refLat * Math.PI / 180))) * (180 / Math.PI);
   return { lat, lon };
 }
 
