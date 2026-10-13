@@ -1,0 +1,3320 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style>
+<title>Jacto GPS</title>
+<!-- PWA / iPhone -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Jacto GPS">
+<meta name="theme-color" content="#0B1810">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="manifest" href="manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600&display=swap">
+<!-- PDF.js UMD build (jsdelivr) — render PDFs as map background without backend -->
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+</head><body>
+
+<style>
+/* ─── TOKENS ─────────────────────────────────────────────────────────── */
+:root {
+  --bg:        #0B1810;
+  --surf:      #13261A;
+  --surf2:     #1B3624;
+  --surf3:     #243E2E;
+  --border:    #2B5038;
+  --border2:   #3A6B4A;
+  --accent:    #4EC94A;
+  --accentd:   #2D8A38;
+  --accenth:   #6DE869;
+  --amber:     #D4A017;
+  --amberh:    #F0C040;
+  --red:       #E05A4A;
+  --text:      #D8EDD0;
+  --text2:     #7BAB85;
+  --text3:     #4A7A58;
+  --mono:      'Courier New', monospace;
+  --canvas-bg: #0D2017;
+  --r:         6px;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg:       #EBF5E8;
+    --surf:     #FFFFFF;
+    --surf2:    #F2FAF0;
+    --surf3:    #E4F2E0;
+    --border:   #B8D8B0;
+    --border2:  #8CBC80;
+    --text:     #132019;
+    --text2:    #3A6A44;
+    --text3:    #6A9A72;
+    --canvas-bg:#C8E5C0;
+  }
+}
+:root[data-theme="light"] {
+  --bg:       #EBF5E8;
+  --surf:     #FFFFFF;
+  --surf2:    #F2FAF0;
+  --surf3:    #E4F2E0;
+  --border:   #B8D8B0;
+  --border2:  #8CBC80;
+  --text:     #132019;
+  --text2:    #3A6A44;
+  --text3:    #6A9A72;
+  --canvas-bg:#C8E5C0;
+}
+
+/* ─── BASE ───────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; }
+html, body { height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+input, select, textarea, button { font-family: inherit; font-size: 14px; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ─── HEADER ─────────────────────────────────────────────────────────── */
+.app-header {
+  background: var(--surf);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 100;
+}
+.app-logo {
+  width: 36px; height: 36px;
+  background: var(--accentd);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+}
+.app-logo svg { width: 22px; height: 22px; }
+.app-title { font-family: 'Rajdhani', sans-serif; }
+.app-title h1 { font-size: 18px; font-weight: 700; line-height: 1; color: var(--text); }
+.app-title small { font-size: 11px; color: var(--text2); font-weight: 500; letter-spacing: .04em; text-transform: uppercase; }
+.header-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.theme-btn {
+  background: var(--surf2);
+  border: 1px solid var(--border);
+  color: var(--text2);
+  border-radius: var(--r);
+  padding: 5px 10px;
+  font-size: 12px;
+  transition: background .15s;
+}
+.theme-btn:hover { background: var(--surf3); color: var(--text); }
+
+/* ─── LAYOUT ─────────────────────────────────────────────────────────── */
+.app-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  grid-template-rows: 1fr;
+  min-height: 0;
+}
+@media (max-width: 760px) {
+  .app-body { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
+}
+
+/* ─── SIDEBAR ────────────────────────────────────────────────────────── */
+.sidebar {
+  background: var(--surf);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* ─── TAB BAR ────────────────────────────────────────────────────────── */
+.tab-bar {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  background: var(--surf3);
+  border-bottom: 2px solid var(--border);
+  flex-shrink: 0;
+}
+.tab-btn {
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  padding: 9px 4px 7px;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--text3);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  transition: color .15s, border-color .15s;
+}
+.tab-btn:hover { color: var(--text2); }
+.tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); background: var(--surf2); }
+.tab-icon { font-size: 17px; line-height: 1; }
+
+/* ─── TAB PANELS ─────────────────────────────────────────────────────── */
+.tab-panel {
+  display: none;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  flex: 1;
+  overflow-y: auto;
+}
+.tab-panel.active { display: flex; }
+
+/* ─── SIDEBAR EXPORT ─────────────────────────────────────────────────── */
+.sidebar-export {
+  padding: 12px;
+  background: var(--surf);
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Legacy section classes kept for compatibility */
+.section-body { display: flex; flex-direction: column; gap: 10px; }
+
+/* ─── FORM CONTROLS ──────────────────────────────────────────────────── */
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field label {
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .06em;
+  color: var(--text2);
+}
+.input-row { display: grid; gap: 6px; }
+.input-row-2 { grid-template-columns: 1fr 1fr; }
+input[type="text"], input[type="number"], select, textarea {
+  background: var(--surf);
+  border: 1px solid var(--border2);
+  border-radius: 5px;
+  color: var(--text);
+  padding: 7px 10px;
+  width: 100%;
+  transition: border-color .15s;
+}
+input[type="text"]:focus, input[type="number"]:focus, select:focus, textarea:focus {
+  border-color: var(--accent);
+}
+textarea { resize: vertical; min-height: 70px; font-family: var(--mono); font-size: 12px; }
+
+/* ─── RANGE SLIDER ───────────────────────────────────────────────────── */
+.range-group { display: flex; flex-direction: column; gap: 4px; }
+.range-label { display: flex; justify-content: space-between; align-items: baseline; }
+.range-label span { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--text2); }
+.range-val { font-family: 'Rajdhani', sans-serif; font-size: 16px; font-weight: 700; color: var(--accent); }
+input[type="range"] {
+  -webkit-appearance: none; width: 100%; height: 4px;
+  border-radius: 2px; background: var(--border);
+  cursor: pointer; accent-color: var(--accent);
+}
+
+/* ─── POINTS TABLE ───────────────────────────────────────────────────── */
+.pts-list { display: flex; flex-direction: column; gap: 5px; max-height: 220px; overflow-y: auto; }
+.pt-row {
+  display: grid;
+  grid-template-columns: 24px 1fr 1fr 26px;
+  gap: 5px;
+  align-items: center;
+}
+.pt-idx {
+  font-family: 'Rajdhani', sans-serif; font-size: 12px; font-weight: 700;
+  color: var(--text3); text-align: center;
+}
+.pt-del {
+  background: none; border: none; color: var(--red);
+  font-size: 16px; line-height: 1; padding: 2px; border-radius: 4px;
+  opacity: .7; transition: opacity .15s;
+}
+.pt-del:hover { opacity: 1; }
+.pts-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
+/* ─── BUTTONS ────────────────────────────────────────────────────────── */
+.btn {
+  border: none; border-radius: var(--r); padding: 8px 14px;
+  font-weight: 600; font-size: 13px;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  transition: filter .15s, transform .1s;
+  white-space: nowrap;
+}
+.btn:active { transform: scale(.97); }
+.btn-accent { background: var(--accent); color: #0B1810; }
+.btn-accent:hover { filter: brightness(1.12); }
+.btn-amber { background: var(--amber); color: #0B1810; }
+.btn-amber:hover { filter: brightness(1.12); }
+.btn-ghost { background: var(--surf3); border: 1px solid var(--border2); color: var(--text); }
+.btn-ghost:hover { background: var(--surf2); border-color: var(--accent); }
+.btn-sm { padding: 5px 10px; font-size: 12px; }
+.btn-full { width: 100%; }
+
+/* ─── STATS ROW ──────────────────────────────────────────────────────── */
+.stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.stat-card {
+  background: var(--surf3);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 8px 10px;
+  text-align: center;
+}
+.stat-val {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 18px; font-weight: 700;
+  color: var(--accent);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.stat-lbl { font-size: 10px; color: var(--text2); text-transform: uppercase; letter-spacing: .05em; margin-top: 3px; }
+
+/* ─── EXPORT BAR ─────────────────────────────────────────────────────── */
+.export-bar {
+  padding: 14px 16px;
+  background: var(--surf);
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* ─── CANVAS AREA ────────────────────────────────────────────────────── */
+.canvas-area {
+  display: flex;
+  flex-direction: column;
+  background: var(--canvas-bg);
+  min-height: 0;
+  position: relative;
+}
+.canvas-toolbar {
+  background: var(--surf);
+  border-bottom: 1px solid var(--border);
+  padding: 8px 14px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+.canvas-wrap { flex: 1; position: relative; min-height: 300px; overflow: hidden; touch-action: none; -webkit-user-select: none; user-select: none; }
+canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.canvas-legend {
+  position: absolute;
+  bottom: 10px; right: 10px;
+  background: rgba(11, 24, 16, .85);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 8px 12px;
+  font-size: 11px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.leg-row { display: flex; align-items: center; gap: 7px; color: var(--text2); }
+.leg-line { width: 24px; height: 2px; border-radius: 1px; flex-shrink: 0; }
+
+/* ─── HELP MODAL ─────────────────────────────────────────────────────── */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.7);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 10000;
+  padding: 16px;
+}
+.modal-overlay[hidden] { display: none; }
+.modal-box {
+  background: var(--surf);
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  max-width: 640px; width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 0;
+  box-shadow: 0 24px 64px rgba(0,0,0,.5);
+}
+.modal-head {
+  background: var(--surf3);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 18px;
+  display: flex; align-items: center; gap: 10px;
+  border-radius: 10px 10px 0 0;
+  position: sticky; top: 0; z-index: 1;
+}
+.modal-head h2 {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 18px; font-weight: 700;
+  color: var(--accent); margin: 0; flex: 1;
+}
+.modal-close {
+  background: none; border: none;
+  color: var(--text2); font-size: 20px;
+  cursor: pointer; padding: 2px 8px; border-radius: 4px;
+}
+.modal-close:hover { color: var(--text); background: var(--surf2); }
+.modal-body { padding: 18px; display: flex; flex-direction: column; gap: 18px; }
+
+.step-card {
+  background: var(--surf2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.step-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 14px;
+  background: var(--surf3);
+  border-bottom: 1px solid var(--border);
+}
+.step-num {
+  width: 26px; height: 26px;
+  background: var(--accent);
+  color: #0B1810;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 14px; font-weight: 700;
+  flex-shrink: 0;
+}
+.step-title {
+  font-family: 'Rajdhani', sans-serif;
+  font-size: 15px; font-weight: 700;
+  color: var(--text);
+}
+.step-body { padding: 12px 14px; font-size: 13px; line-height: 1.7; color: var(--text2); }
+.step-body b { color: var(--text); }
+.step-body code {
+  background: var(--surf3); border: 1px solid var(--border);
+  padding: 1px 6px; border-radius: 4px;
+  font-family: var(--mono); font-size: 12px;
+  color: var(--accent);
+}
+.step-body .tip {
+  background: rgba(78,201,74,.1);
+  border: 1px solid rgba(78,201,74,.3);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--accenth);
+}
+.step-body .warn {
+  background: rgba(212,160,23,.1);
+  border: 1px solid rgba(212,160,23,.3);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--amberh);
+}
+.coord-example {
+  font-family: var(--mono); font-size: 12px;
+  background: var(--surf);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 8px 12px;
+  margin-top: 8px;
+  color: var(--accent);
+  white-space: pre;
+  line-height: 1.8;
+}
+.gmap-demo {
+  background: var(--surf);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px;
+  margin-top: 10px;
+  display: flex; flex-direction: column; gap: 6px;
+  font-size: 12px;
+}
+.gmap-step {
+  display: flex; gap: 8px; align-items: flex-start;
+}
+.gmap-step .gs-num {
+  background: #4285F4; color: #fff;
+  border-radius: 50%;
+  width: 18px; height: 18px; min-width: 18px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 700;
+}
+.gmap-step .gs-text { color: var(--text2); line-height: 1.5; }
+
+/* ─── TOAST ──────────────────────────────────────────────────────────── */
+#drawBar { position: absolute; left: 0; right: 0; top: 8px; margin: 0 auto; width: max-content; z-index: 24;
+  display: flex; gap: 6px; align-items: center; padding: 6px; max-width: calc(100% - 16px); overflow-x: auto;
+  background: var(--surf); border: 1px solid var(--border2); border-radius: 10px; box-shadow: 0 6px 18px rgba(0,0,0,0.35); }
+#drawBar .draw-bar-group { display: flex; gap: 6px; align-items: center; flex-wrap: nowrap; }
+#drawBar .draw-bar-group[hidden] { display: none; }
+#drawBar .btn { white-space: nowrap; }
+#drawBar .btn:disabled { opacity: .45; cursor: default; }
+#drawBar .db-ok { background: var(--accent); color: #0B1810; border-color: var(--accent); font-weight: 700; }
+#drawBar .db-del { color: var(--red); }
+#drawBar .db-info { color: var(--text2); font-size: 12px; padding: 0 4px; }
+@media (max-width: 600px) { #drawBar { padding: 4px; gap: 4px; } #drawBar .btn { padding: 4px 7px; font-size: 12px; } #drawBar .db-info { display: none; } }
+#simHud { position: absolute; top: 10px; left: 10px; z-index: 25; width: min(290px, calc(100% - 20px));
+  background: var(--surf); border: 1px solid var(--border2); border-radius: 10px; padding: 10px 12px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.35); color: var(--text); font-size: 12px; }
+#simHud .sim-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+#simHud .sim-title { font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 15px; letter-spacing: .03em; color: var(--accent); }
+#simHud .sim-x { background: none; border: none; color: var(--text2); font-size: 16px; cursor: pointer; padding: 0 4px; }
+#simHud .sim-pass { font-weight: 600; margin-bottom: 6px; color: var(--text); }
+#simHud .sim-bar { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; margin-bottom: 8px; }
+#simBarFill { height: 100%; width: 0; background: var(--accent); transition: width .15s linear; }
+#simHud .sim-grid { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; margin-bottom: 9px; }
+#simHud .sim-grid span { color: var(--text2); }
+#simHud .sim-grid b { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+#simHud .sim-ctrl { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+#simHud .sim-play { background: var(--accent); color: #0B1810; border-color: var(--accent); font-weight: 700; min-width: 92px; }
+#simHud select { padding: 4px 6px; font-size: 12px; width: auto; }
+@media (max-width: 600px) {
+  #simHud { width: min(230px, calc(100% - 70px)); padding: 7px 9px; font-size: 11px; }
+  #simHud .sim-grid { gap: 2px 8px; margin-bottom: 6px; }
+  #simHud .sim-grid .sim-opt { display: none; }
+  #simHud .sim-play { min-width: 80px; }
+}
+#simHud .sim-follow { display: flex; align-items: center; gap: 4px; color: var(--text2); cursor: pointer; }
+#toast {
+  position: fixed; bottom: 24px; left: 50%;
+  transform: translateX(-50%) translateY(20px);
+  background: var(--surf3);
+  border: 1px solid var(--border2);
+  color: var(--text);
+  padding: 10px 20px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  opacity: 0;
+  transition: opacity .25s, transform .25s;
+  pointer-events: none;
+  z-index: 9999;
+  white-space: nowrap;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+#toast.error { border-color: var(--red); color: var(--red); }
+</style>
+
+<!-- HEADER -->
+<header class="app-header">
+  <div class="app-logo">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#4EC94A" stroke-width="2" stroke-linecap="round">
+      <path d="M3 21l9-18 9 18"/><path d="M6 16h12"/>
+      <circle cx="12" cy="12" r="1.5" fill="#4EC94A" stroke="none"/>
+    </svg>
+  </div>
+  <div class="app-title">
+    <h1>Jacto GPS</h1>
+    <small>Gerador — Fumigado Star 2014 · v10</small>
+  </div>
+  <div class="header-actions">
+    <label class="btn btn-ghost btn-sm" title="Abrir arquivo .jacto">
+      📂 Abrir
+      <input type="file" accept=".jacto,application/json" id="fileInput" hidden onchange="loadJactoFile(event)">
+    </label>
+    <button class="btn btn-ghost btn-sm" onclick="openHelp()" style="background:var(--accentd);color:#fff;border-color:var(--accentd)">❓ Como Usar</button>
+    <button class="theme-btn" onclick="toggleTheme()" title="Alternar tema">☀/🌙</button>
+  </div>
+</header>
+
+<!-- HELP MODAL -->
+<div class="modal-overlay" id="helpModal" hidden>
+  <div class="modal-box">
+    <div class="modal-head">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#4EC94A" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+      <h2>Como Usar — Guia Passo a Passo</h2>
+      <button class="modal-close" onclick="closeHelp()">✕</button>
+    </div>
+    <div class="modal-body">
+
+      <div class="step-card">
+        <div class="step-head"><div class="step-num">1</div><div class="step-title">Obtenha as coordenadas GPS do seu talhão</div></div>
+        <div class="step-body">
+          Você precisa da <b>latitude e longitude</b> de cada canto (vértice) do talhão.<br>
+          Existem duas formas:
+
+          <div class="gmap-demo">
+            <b style="color:var(--text);font-size:13px">📍 Método A — Google Earth (no PC)</b>
+            <div class="gmap-step"><div class="gs-num">1</div><div class="gs-text">Abra <b>Google Earth Pro</b> (gratuito) ou earth.google.com</div></div>
+            <div class="gmap-step"><div class="gs-num">2</div><div class="gs-text">Procure sua fazenda usando o nome ou navegue no mapa</div></div>
+            <div class="gmap-step"><div class="gs-num">3</div><div class="gs-text"><b>Clique com botão direito</b> em um canto do talhão → "¿Qué hay aquí?" ou "What's here?"</div></div>
+            <div class="gmap-step"><div class="gs-num">4</div><div class="gs-text">Aparece a latitude e longitude na parte inferior do mapa — anote ou copie</div></div>
+            <div class="gmap-step"><div class="gs-num">5</div><div class="gs-text">Repita para todos os cantos do talhão (mínimo 3 pontos)</div></div>
+          </div>
+
+          <div class="gmap-demo" style="margin-top:8px">
+            <b style="color:var(--text);font-size:13px">🚜 Método B — GPS no campo</b>
+            <div class="gmap-step"><div class="gs-num">1</div><div class="gs-text">Vá a pé ou de veículo até cada canto do talhão</div></div>
+            <div class="gmap-step"><div class="gs-num">2</div><div class="gs-text">Use o celular (app Maps.me, Google Maps, ou similar) e anote as coordenadas</div></div>
+            <div class="gmap-step"><div class="gs-num">3</div><div class="gs-text">Anote no formato: <code>-17.7831, -63.1820</code></div></div>
+          </div>
+
+          <div class="tip">💡 Para fumigação, 4 a 8 pontos por talhão geralmente são suficientes. Quanto mais cantos irregulares, mais pontos são necessários.</div>
+        </div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-head"><div class="step-num">2</div><div class="step-title">Insira as coordenadas no gerador</div></div>
+        <div class="step-body">
+          Na barra à esquerda, na seção <b>"📍 Vértices do Talhão"</b>:
+          <br><br>
+          <b>Opção rápida:</b> Clique em <b>📋 Colar Lista</b> e cole suas coordenadas no formato abaixo (uma por linha):
+          <div class="coord-example">-17.7831, -63.1820
+-17.7831, -63.1720
+-17.7895, -63.1720
+-17.7895, -63.1820</div>
+          Clique em <b>✓ Aplicar</b> — o talhão aparece no mapa ao lado.
+          <br><br>
+          <b>Opção manual:</b> Clique em <b>＋ Ponto</b> e edite cada linha individualmente.
+          <div class="warn">⚠️ As coordenadas devem ser em graus decimais, com ponto (.) como separador. Latitude negativa = Sul. Longitude negativa = Oeste.</div>
+        </div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-head"><div class="step-num">3</div><div class="step-title">Preencha a identificação do projeto</div></div>
+        <div class="step-body">
+          Na seção <b>"🌾 Identificação do Projeto"</b>:
+          <ul style="margin:8px 0 0 16px;display:flex;flex-direction:column;gap:4px">
+            <li><b>Nome da Fazenda:</b> Fazenda Santa Maria (já preenchido)</li>
+            <li><b>Talhão / Gleba:</b> Ex: Lote 1, Lote 8A, Gleba Norte…</li>
+            <li><b>Operador:</b> Nome do operador do fumigador</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-head"><div class="step-num">4</div><div class="step-title">Configure os parâmetros de fumigação</div></div>
+        <div class="step-body">
+          Na seção <b>"⚙️ Parâmetros de Fumigação"</b>:
+          <ul style="margin:8px 0 0 16px;display:flex;flex-direction:column;gap:6px">
+            <li><b>Largura de Faixa:</b> Distância entre passadas do fumigador. Padrão Jacto Star = <b>28 m</b></li>
+            <li><b>Velocidade:</b> Velocidade de trabalho. Padrão = <b>18 km/h</b></li>
+            <li><b>Ângulo AB:</b> Direção das linhas de trabalho. <b>0° = Norte-Sul</b>, <b>90° = Leste-Oeste</b>. Escolha conforme a orientação do seu talhão para menos curvas.</li>
+            <li><b>Faixas de Cabeceira:</b> Quantas passadas extras nas bordas antes de entrar no talhão. Geralmente <b>1</b>.</li>
+          </ul>
+          <div class="tip">💡 Ajuste o Ângulo AB até que as linhas verdes no mapa fiquem paralelas ao lado mais longo do talhão — isso minimiza o número de curvas.</div>
+        </div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-head"><div class="step-num">5</div><div class="step-title">Exporte e copie para o pen drive</div></div>
+        <div class="step-body">
+          Clique em <b>💾 Exportar TASKDATA.ZIP (Jacto Star)</b>.
+          <br><br>
+          Após confirmar o download:
+          <div class="gmap-demo">
+            <div class="gmap-step"><div class="gs-num">1</div><div class="gs-text">Abra o arquivo <b>TASKDATA_XXXX.zip</b> baixado</div></div>
+            <div class="gmap-step"><div class="gs-num">2</div><div class="gs-text">Copie a <b>pasta TASKDATA</b> (não o ZIP) para um pen drive <b>FAT32</b></div></div>
+            <div class="gmap-step"><div class="gs-num">3</div><div class="gs-text">A pasta deve estar na raiz do pen drive: <code>📁 TASKDATA/TASKDATA.XML</code></div></div>
+          </div>
+          <div class="warn">⚠️ O pen drive deve ser <b>FAT32</b>, não NTFS nem exFAT. O terminal Jacto não lê outros formatos.</div>
+        </div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-head"><div class="step-num">6</div><div class="step-title">Carregue no terminal Jacto Star 2014</div></div>
+        <div class="step-body">
+          <div class="gmap-demo">
+            <div class="gmap-step"><div class="gs-num">1</div><div class="gs-text">Insira o pen drive na porta USB do terminal Jacto Star 2014</div></div>
+            <div class="gmap-step"><div class="gs-num">2</div><div class="gs-text">No menu principal, vá em <b>Tarefas → Importar</b> (ou Gerenciar Tarefas)</div></div>
+            <div class="gmap-step"><div class="gs-num">3</div><div class="gs-text">Selecione o talhão importado e inicie o trabalho</div></div>
+            <div class="gmap-step"><div class="gs-num">4</div><div class="gs-text">O terminal mostrará as linhas AB e o limite do talhão no display</div></div>
+          </div>
+          <div class="tip">💡 Salve também um arquivo <b>.jacto</b> (botão "Salvar .jacto") para poder reabrir e editar o projeto depois.</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="app-body">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+
+    <!-- TAB BAR -->
+    <div class="tab-bar">
+      <button class="tab-btn active" id="tab-proj" onclick="switchTab('proj')">
+        <span class="tab-icon">🌾</span>Projeto
+      </button>
+      <button class="tab-btn" id="tab-gps" onclick="switchTab('gps')">
+        <span class="tab-icon">📍</span>GPS
+      </button>
+      <button class="tab-btn" id="tab-cfg" onclick="switchTab('cfg')">
+        <span class="tab-icon">⚙️</span>Config
+      </button>
+      <button class="tab-btn" id="tab-stats" onclick="switchTab('stats')">
+        <span class="tab-icon">📊</span>Dados
+      </button>
+      <button class="tab-btn" id="tab-lots" onclick="switchTab('lots')">
+        <span class="tab-icon">🗂️</span>Lotes
+      </button>
+    </div>
+
+    <!-- PAINEL 1: Identificação -->
+    <div class="tab-panel active" id="panel-proj">
+      <div class="field">
+        <label>Nome da Fazenda</label>
+        <input type="text" id="fazenda" value="Fazenda Santa Maria" oninput="scheduleRender()">
+      </div>
+      <div class="input-row input-row-2">
+        <div class="field">
+          <label>Talhão / Gleba</label>
+          <input type="text" id="talhao" value="Talhão 1" oninput="scheduleRender()">
+        </div>
+        <div class="field">
+          <label>Operador</label>
+          <input type="text" id="operador" value="Operador 1">
+        </div>
+      </div>
+      <div style="font-size:11px; color:var(--text2); line-height:1.6; background:var(--surf2); border:1px solid var(--border); border-radius:5px; padding:10px;">
+        <strong style="color:var(--accent)">ℹ️ Como usar:</strong><br>
+        1. Aba <b>GPS</b> → cole os vértices do talhão<br>
+        2. Aba <b>Config</b> → ajuste faixa, velocidade e ângulo<br>
+        3. Clique <b>Exportar TASKDATA.ZIP</b> abaixo<br>
+        4. Copie o ZIP para pen drive FAT32 e leve ao Jacto Star 2014
+      </div>
+    </div>
+
+    <!-- PAINEL 2: GPS Vértices -->
+    <div class="tab-panel" id="panel-gps">
+      <div style="font-size:11px; color:var(--text2); line-height:1.5">
+        Adicione os vértices em ordem (horário ou anti-horário).<br>
+        Formato: <code style="color:var(--accent)">Latitude, Longitude</code>
+      </div>
+
+      <div class="pts-list" id="ptsList"></div>
+
+      <div class="pts-actions">
+        <button class="btn btn-ghost btn-sm" onclick="addPoint()">＋ Ponto</button>
+        <button class="btn btn-ghost btn-sm" onclick="showPaste()">📋 Colar Lista</button>
+        <button class="btn btn-ghost btn-sm" onclick="clearPoints()" style="color:var(--red)">🗑 Limpar</button>
+      </div>
+
+      <div id="pasteArea" hidden>
+        <div class="field">
+          <label>Cole as coordenadas (uma por linha: lat, lon)</label>
+          <textarea id="pasteInput" placeholder="-17.7831, -63.1820&#10;-17.7831, -63.1750&#10;-17.7890, -63.1750&#10;-17.7890, -63.1820"></textarea>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-accent btn-sm" onclick="applyPaste()">✓ Aplicar</button>
+          <button class="btn btn-ghost btn-sm" onclick="document.getElementById('pasteArea').hidden=true">Cancelar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAINEL 3: Parâmetros -->
+    <div class="tab-panel" id="panel-cfg">
+
+      <div class="range-group">
+        <div class="range-label">
+          <span>Largura de Faixa (m)</span>
+          <span class="range-val" id="swathVal">28 m</span>
+        </div>
+        <input type="range" id="swathWidth" min="10" max="45" value="28" step="1" oninput="updateParams()">
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text3)">
+          <span>10 m</span><span style="color:var(--accent)">28 m (Padrão Star)</span><span>45 m</span>
+        </div>
+      </div>
+
+      <div class="range-group">
+        <div class="range-label">
+          <span>Velocidade de Trabalho</span>
+          <span class="range-val" id="speedVal">18.0 km/h</span>
+        </div>
+        <input type="range" id="workSpeed" min="4" max="32" value="18" step="0.5" oninput="updateParams()">
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text3)">
+          <span>4 km/h</span><span>18 km/h</span><span>32 km/h</span>
+        </div>
+      </div>
+
+      <div class="range-group">
+        <div class="range-label">
+          <span>Ângulo Linha AB (°)</span>
+          <span class="range-val" id="angleVal">45°</span>
+        </div>
+        <input type="range" id="abAngle" min="0" max="180" value="45" step="1" oninput="updateParams()">
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text3)">
+          <span>0° (N-S)</span><span>90° (L-O)</span><span>180°</span>
+        </div>
+      </div>
+
+      <div class="range-group">
+        <div class="range-label">
+          <span>Faixas de Cabeceira</span>
+          <span class="range-val" id="headlandVal">1 passada</span>
+        </div>
+        <input type="range" id="headlandPasses" min="0" max="4" value="1" step="1" oninput="updateParams()">
+        <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text3)">
+          <span>Sem</span><span>1</span><span>2</span><span>3</span><span>4</span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- PAINEL 4: Dados / Estatísticas -->
+    <div class="tab-panel" id="panel-stats">
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-val" id="statArea">—</div>
+          <div class="stat-lbl">Área (ha)</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-val" id="statLines">—</div>
+          <div class="stat-lbl">Passadas AB</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-val" id="statDist">—</div>
+          <div class="stat-lbl">Dist. total (km)</div>
+        </div>
+      </div>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-val" id="statTime">—</div>
+          <div class="stat-lbl">Tempo est. (h)</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-val" id="statPerim">—</div>
+          <div class="stat-lbl">Perímetro (m)</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-val" id="statPoints">0</div>
+          <div class="stat-lbl">Vértices</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAINEL 5: Lotes Desenhados -->
+    <div class="tab-panel" id="panel-lots" style="flex-direction:column;gap:0">
+      <!-- Cabeçalho total -->
+      <div id="lotsTabHeader" style="background:var(--surf2);border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-family:'Rajdhani',sans-serif">Total Lotes</div>
+          <div style="font-family:'Rajdhani',sans-serif;font-weight:700;font-size:22px;color:var(--accent)" id="lotsTabTotal">— ha</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:11px;color:var(--text3)">Lotes desenhados</div>
+          <div style="font-size:20px;font-weight:700;font-family:'Rajdhani',sans-serif;color:var(--text2)" id="lotsTabCount">0</div>
+        </div>
+      </div>
+      <!-- Nota explicativa -->
+      <div style="font-size:11px;color:var(--text3);line-height:1.5;margin-bottom:8px;padding:0 2px">
+        <strong style="color:var(--amber)">📐 Área calculada</strong> = estimativa do desenho.<br>
+        <strong style="color:var(--accent)">✏️ Área exata</strong> = valor real que você conhece do talhão.
+      </div>
+      <!-- Lista de lotes -->
+      <div id="lotsTabList" style="display:flex;flex-direction:column;gap:8px;overflow-y:auto;flex:1;min-height:0"></div>
+      <!-- Botão limpar -->
+      <button class="btn btn-ghost btn-sm" onclick="saveAllLotsZip()" style="margin-top:10px;width:100%" title="Um arquivo .jacto para cada lote, dentro de um .zip">📦 Salvar cada lote separado (.zip)</button>
+      <button class="btn btn-ghost btn-sm" onclick="clearLots()" style="color:var(--red);margin-top:6px;width:100%">🗑 Limpar todos os lotes</button>
+    </div>
+
+    <!-- EXPORT (sempre visível) -->
+    <div class="sidebar-export">
+      <button class="btn btn-accent btn-full" onclick="exportTaskdata()">
+        💾 Exportar TASKDATA.ZIP (Jacto Star)
+      </button>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <button class="btn btn-ghost btn-sm" onclick="saveJactoFile()">💾 Salvar .jacto</button>
+        <button class="btn btn-ghost btn-sm" onclick="exportCSV()">📊 Exportar CSV</button>
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- CANVAS AREA -->
+  <div class="canvas-area">
+    <div class="canvas-toolbar">
+      <span style="font-family:'Rajdhani',sans-serif;font-size:13px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.06em;">Pré-visualização</span>
+      <button class="btn btn-ghost btn-sm" onclick="fitView()">⊡ Centralizar</button>
+      <button class="btn btn-ghost btn-sm" onclick="zoomIn()">＋</button>
+      <button class="btn btn-ghost btn-sm" onclick="zoomOut()">－</button>
+      <label class="btn btn-ghost btn-sm" title="Carregar imagem de satélite, PDF, TIFF ou qualquer arquivo (app desktop converte automaticamente)" style="cursor:pointer">
+        🗺️ Mapa
+        <input type="file" accept="*" id="mapInput" hidden onchange="loadMapFile(event)">
+      </label>
+      <button class="btn btn-ghost btn-sm" id="btnRefitMap" onclick="refitMap()" hidden title="Encaixar mapa à vista atual">⊞</button>
+      <button class="btn btn-ghost btn-sm" id="btnClearMap" onclick="clearMap()" hidden style="color:var(--red);padding:5px 8px" title="Remover mapa">✕</button>
+      <button class="btn btn-ghost btn-sm" id="btnToggleMap" onclick="toggleMap()" hidden title="Mostrar/Ocultar mapa">👁</button>
+      <div style="width:1px;height:20px;background:var(--border);flex-shrink:0"></div>
+      <button id="btnDrawMode" class="btn btn-ghost btn-sm" onclick="toggleDrawMode()" title="Desenhar lotes sobre o mapa">✏️ Desenhar</button>
+      <button id="btnScaleMode" class="btn btn-ghost btn-sm" onclick="toggleScaleMode()" title="Definir escala: clique 2 pontos com distância conhecida">📏 Escala</button>
+      <button id="btnEditMode" class="btn btn-ghost btn-sm" onclick="toggleEditMode()" title="Editar vértices dos lotes">↖ Editar</button>
+      <button id="btnShowLots" class="btn btn-ghost btn-sm" onclick="toggleLotsPanel()" title="Lista de lotes desenhados" style="display:none">📋 Lotes</button>
+      <div style="width:1px;height:20px;background:var(--border);flex-shrink:0"></div>
+      <button id="btnStoneMode" class="btn btn-ghost btn-sm" onclick="toggleStoneMode()" title="Marcar bola de pedras no mapa">🪨 Pedras</button>
+      <button id="btnWindrowMode" class="btn btn-ghost btn-sm" onclick="toggleWindrowMode()" title="Desenhar cordão de desmonte (clique + duplo-clique para finalizar)">〰️ Cordões</button>
+      <div style="width:1px;height:20px;background:var(--border);flex-shrink:0"></div>
+      <button id="btnSim" class="btn btn-ghost btn-sm" onclick="openSim()" title="Simular o trabalho do trator sobre as linhas">🚜 Simular</button>
+      <button id="btnClearObst" class="btn btn-ghost btn-sm" onclick="clearObstacles()" style="color:var(--red);display:none" title="Apagar todos os marcadores">🗑 Marcadores</button>
+      <span style="margin-left:auto;font-size:11px;color:var(--text3)" id="scaleInfo">—</span>
+    </div>
+    <div class="canvas-wrap" id="canvasWrap">
+      <canvas id="mainCanvas"></canvas>
+      <div id="drawBar" hidden onclick="event.stopPropagation()" onmousedown="event.stopPropagation()" ontouchstart="event.stopPropagation()" ondblclick="event.stopPropagation()">
+        <span id="drawBarDraw" class="draw-bar-group">
+          <button class="btn btn-sm" id="btnUndoPt" onclick="undoDrawPoint()" title="Apagar o último ponto (Backspace ou Ctrl+Z)">↶ Desfazer ponto</button>
+          <button class="btn btn-sm db-ok" id="btnFinishLot" onclick="finishDrawing()" title="Fechar o lote (Enter)">✓ Fechar lote</button>
+          <button class="btn btn-sm db-del" onclick="cancelDrawing()" title="Cancelar o lote em desenho (Esc)">✕ Cancelar</button>
+        </span>
+        <span id="drawBarEdit" class="draw-bar-group">
+          <span class="db-info" id="drawBarInfo"></span>
+          <button class="btn btn-sm db-del" id="btnDelVtx" onclick="deleteSelectedVertex()" title="Apagar o ponto selecionado (Delete)">🗑 Apagar ponto</button>
+          <button class="btn btn-sm db-del" onclick="deleteSelectedLot()" title="Apagar o lote inteiro">🗑 Apagar lote</button>
+        </span>
+      </div>
+      <div id="simHud" hidden onclick="event.stopPropagation()" onmousedown="event.stopPropagation()" ontouchstart="event.stopPropagation()" ondblclick="event.stopPropagation()" onwheel="event.stopPropagation()">
+        <div class="sim-head">
+          <span class="sim-title">🚜 Simulação</span>
+          <button class="sim-x" onclick="closeSim()" title="Fechar simulação">✕</button>
+        </div>
+        <div class="sim-pass" id="simPass">—</div>
+        <div class="sim-bar"><div id="simBarFill"></div></div>
+        <div class="sim-grid">
+          <span>Progresso</span><b id="simPct">0%</b>
+          <span class="sim-opt">Trabalhado</span><b class="sim-opt" id="simWork">0,0 / 0,0 km</b>
+          <span>Área feita</span><b id="simArea">0,00 / 0,00 ha</b>
+          <span class="sim-opt">Manobras</span><b class="sim-opt" id="simTurn">0,0 km</b>
+          <span>Tempo</span><b id="simTime">0:00 / 0:00 h</b>
+        </div>
+        <div class="sim-ctrl">
+          <button class="btn btn-sm sim-play" id="simPlay" onclick="toggleSimPlay()">▶ Iniciar</button>
+          <button class="btn btn-ghost btn-sm" onclick="restartSim()" title="Voltar ao início">⟲</button>
+          <select id="simSpeed" title="Velocidade da simulação">
+            <option value="10">10×</option>
+            <option value="30">30×</option>
+            <option value="60" selected>60×</option>
+            <option value="200">200×</option>
+            <option value="600">600×</option>
+          </select>
+          <label class="sim-follow"><input type="checkbox" id="simFollow" checked> Seguir</label>
+        </div>
+      </div>
+      <!-- Floating zoom controls -->
+      <div id="zoomControls" style="position:absolute;bottom:10px;right:10px;display:flex;flex-direction:column;gap:4px;z-index:20">
+        <button onclick="zoomIn()" title="Zoom +" style="width:36px;height:36px;border-radius:8px;background:var(--surf);border:1px solid var(--border2);color:var(--text);font-size:20px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.4);line-height:1">+</button>
+        <button onclick="fitView()" title="Centralizar" style="width:36px;height:36px;border-radius:8px;background:var(--surf);border:1px solid var(--border2);color:var(--text);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.4)">⊡</button>
+        <button onclick="zoomOut()" title="Zoom -" style="width:36px;height:36px;border-radius:8px;background:var(--surf);border:1px solid var(--border2);color:var(--text);font-size:20px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.4);line-height:1">−</button>
+        <button id="btnPanMode" onclick="togglePanMode()" title="Mover mapa (arraste)" style="width:36px;height:36px;border-radius:8px;background:var(--surf);border:1px solid var(--border2);color:var(--text);font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,0.4);margin-top:4px">✋</button>
+      </div>
+      <div id="lotsPanel" hidden style="position:absolute;top:0;right:0;width:240px;max-height:65%;background:var(--surf);border:1px solid var(--border);border-bottom-left-radius:8px;overflow-y:auto;z-index:10;padding:10px;display:flex;flex-direction:column;gap:8px;box-shadow:-4px 4px 12px rgba(0,0,0,0.3)">
+        <div style="font-family:'Rajdhani',sans-serif;font-size:13px;font-weight:700;color:var(--accent);text-transform:uppercase;letter-spacing:.06em">Lotes Desenhados</div>
+        <div id="lotsListEl" style="display:flex;flex-direction:column;gap:6px"></div>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-ghost btn-sm" onclick="clearLots()" style="color:var(--red);flex:1">🗑 Limpar</button>
+          <button class="btn btn-ghost btn-sm" onclick="document.getElementById('lotsPanel').hidden=true" style="flex:1">✕ Fechar</button>
+        </div>
+      </div>
+      <div class="canvas-legend">
+        <div class="leg-row"><div class="leg-line" style="background:#4EC94A"></div> Perímetro</div>
+        <div class="leg-row"><div class="leg-line" style="background:#2D8A38;border:1px dashed #4EC94A"></div> Cabeceira</div>
+        <div class="leg-row"><div class="leg-line" style="background:#6DE869;opacity:.6"></div> Linhas AB</div>
+        <div class="leg-row"><div class="leg-line" style="background:var(--amber)"></div> Reta AB</div>
+        <div class="leg-row"><div class="leg-line" style="background:#E05A4A"></div> 🪨 Pedras</div>
+        <div class="leg-row"><div class="leg-line" style="background:#D4A017;border-style:dashed"></div> 〰 Cordões</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ── PDF.js worker (jsdelivr UMD; cached offline by service worker) ── */
+if (typeof pdfjsLib !== 'undefined') {
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   STATE
+═══════════════════════════════════════════════════════════════ */
+let points = [];   // [{lat, lon}]
+let swathWidth = 28, workSpeed = 18, abAngle = 45, headlandPasses = 1;
+
+// Canvas state
+let zoom = 1, panX = 0, panY = 0;
+let isPanning = false, panSX, panSY;
+let panMode = false;
+let renderTimer = null;
+
+// Computed geometry (in local meter coords)
+let localPoly = [];   // [{x, y}] meters
+let refLat = 0, refLon = 0;  // reference origin
+let abLines = [];     // segments for AB passes
+let headlandPolys = []; // inset polygons for headland viz
+
+// Map background
+let mapBg = null;
+let mapBgVisible = true;
+let mapBgWorld = null; // world-space bounding box when map was loaded {x,y,ww,hw}
+
+// Lot drawing
+let drawMode = 'none'; // 'none' | 'draw' | 'edit' | 'scale'
+let metersPerUnit = null; // escala manual (sem GPS): metros por unidade do canvas
+let scalePts = [];        // pontos da calibração de escala
+let drawPts = [];       // current polygon being drawn [{x,y}] world meters
+let mouseWorld = null;  // current mouse in world coords
+let lots = [];          // [{pts:[{x,y}], name, areaHaOverride}]
+let dragInfo = null;    // {lotIdx, vtxIdx}
+let hoveredVtx = null;
+let selVtx = null;      // vértice selecionado no modo Editar {lotIdx, vtxIdx}
+const LOT_COLORS = ['#F0A030','#3090E0','#E03060','#A020F0','#30D0A0','#F0D020'];
+
+// ── Obstacle annotations ──
+let stoneMarkers = []; // [{x,y,label}]  bola de pedras
+let windrowLines = []; // [{pts:[{x,y}],label}]  cordões de desmonte
+let drawObstMode = 'none'; // 'stone' | 'windrow'
+let windrowPts = []; // windrow being drawn
+
+/* ═══════════════════════════════════════════════════════════════
+   GEO MATH
+═══════════════════════════════════════════════════════════════ */
+const R_EARTH = 6371000;
+
+function toLocal(lat, lon) {
+  if (!refLat && !refLon) return { x: 0, y: 0 };
+  const dLat = (lat - refLat) * Math.PI / 180;
+  const dLon = (lon - refLon) * Math.PI / 180;
+  return {
+    x: dLon * Math.cos(refLat * Math.PI / 180) * R_EARTH,
+    y: dLat * R_EARTH
+  };
+}
+
+function toLatLon(x, y) {
+  const lat = refLat + (y / R_EARTH) * (180 / Math.PI);
+  const lon = refLon + (x / (R_EARTH * Math.cos(refLat * Math.PI / 180))) * (180 / Math.PI);
+  return { lat, lon };
+}
+
+function calcArea(poly) {
+  // Shoelace (meters²)
+  let a = 0;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    a += (poly[j].x * poly[i].y) - (poly[i].x * poly[j].y);
+  }
+  return Math.abs(a) / 2;
+}
+
+function calcPerimeter(poly) {
+  let p = 0;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    p += Math.hypot(poly[i].x - poly[j].x, poly[i].y - poly[j].y);
+  }
+  return p;
+}
+
+/* ─── Polygon offset inward (ported from Jacto source) ─── */
+function pointInPolygon(pt, poly) {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i].x, yi = poly[i].y;
+    const xj = poly[j].x, yj = poly[j].y;
+    if (((yi > pt.y) !== (yj > pt.y)) &&
+        (pt.x < (xj - xi) * (pt.y - yi) / (yj - yi) + xi)) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+// ── Geometria robusta (funciona em lotes côncavos, com "dentes" e gargalos) ──
+function polySignedArea(p) {
+  let a = 0;
+  for (let i = 0, j = p.length - 1; i < p.length; j = i++) a += p[j].x * p[i].y - p[i].x * p[j].y;
+  return a / 2;
+}
+
+function cleanPolygon(poly) {
+  const out = [];
+  poly.forEach(p => { const q = out[out.length - 1]; if (!q || Math.hypot(p.x - q.x, p.y - q.y) > 1e-9) out.push(p); });
+  while (out.length > 1 && Math.hypot(out[0].x - out[out.length - 1].x, out[0].y - out[out.length - 1].y) < 1e-9) out.pop();
+  // remove pontos colineares
+  let changed = true;
+  while (changed && out.length > 3) {
+    changed = false;
+    for (let i = 0; i < out.length; i++) {
+      const a = out[(i - 1 + out.length) % out.length], v = out[i], b = out[(i + 1) % out.length];
+      const cr = (v.x - a.x) * (b.y - v.y) - (v.y - a.y) * (b.x - v.x);
+      const scale = Math.hypot(v.x - a.x, v.y - a.y) * Math.hypot(b.x - v.x, b.y - v.y);
+      if (scale < 1e-18 || Math.abs(cr) < 1e-9 * scale) {
+        const dot = (v.x - a.x) * (b.x - v.x) + (v.y - a.y) * (b.y - v.y);
+        if (dot >= 0) { out.splice(i, 1); changed = true; break; }
+      }
+    }
+  }
+  return out;
+}
+
+function distPointSeg(p, a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y, L2 = dx * dx + dy * dy;
+  let t = L2 ? ((p.x - a.x) * dx + (p.y - a.y) * dy) / L2 : 0;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(p.x - (a.x + dx * t), p.y - (a.y + dy * t));
+}
+
+function distToBoundary(p, poly) {
+  let m = Infinity;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) m = Math.min(m, distPointSeg(p, poly[j], poly[i]));
+  return m;
+}
+
+// Curva deslocada para dentro: canto convexo = encontro das linhas; canto côncavo = arco de raio d
+function rawInsetCurve(poly, d) {
+  const ccw = polySignedArea(poly) > 0;
+  const n = poly.length, out = [];
+  const edge = (a, b) => {
+    let dx = b.x - a.x, dy = b.y - a.y; const L = Math.hypot(dx, dy); dx /= L; dy /= L;
+    return ccw ? { nx: -dy, ny: dx, dx, dy } : { nx: dy, ny: -dx, dx, dy };
+  };
+  for (let i = 0; i < n; i++) {
+    const p0 = poly[(i - 1 + n) % n], v = poly[i], p1 = poly[(i + 1) % n];
+    const e0 = edge(p0, v), e1 = edge(v, p1);
+    const cross = e0.dx * e1.dy - e0.dy * e1.dx;
+    const convex = ccw ? cross > 1e-12 : cross < -1e-12;
+    if (Math.abs(cross) <= 1e-12) { out.push({ x: v.x + e1.nx * d, y: v.y + e1.ny * d }); continue; }
+    if (convex) {
+      const A = { x: v.x + e0.nx * d, y: v.y + e0.ny * d }, B = { x: v.x + e1.nx * d, y: v.y + e1.ny * d };
+      const t = ((B.x - A.x) * e1.dy - (B.y - A.y) * e1.dx) / cross;
+      out.push({ x: A.x + e0.dx * t, y: A.y + e0.dy * t });
+    } else {
+      const a0 = Math.atan2(e0.ny, e0.nx), a1 = Math.atan2(e1.ny, e1.nx);
+      let da = a1 - a0;
+      while (da > Math.PI) da -= 2 * Math.PI;
+      while (da < -Math.PI) da += 2 * Math.PI;
+      const steps = Math.max(1, Math.ceil(Math.abs(da) / (Math.PI / 12)));
+      for (let k = 0; k <= steps; k++) {
+        const ang = a0 + da * k / steps;
+        out.push({ x: v.x + Math.cos(ang) * d, y: v.y + Math.sin(ang) * d });
+      }
+    }
+  }
+  return out;
+}
+
+function segCrossPoint(a, b, c, d) {
+  const r = { x: b.x - a.x, y: b.y - a.y }, s = { x: d.x - c.x, y: d.y - c.y };
+  const den = r.x * s.y - r.y * s.x;
+  if (Math.abs(den) < 1e-12) return null;
+  const t = ((c.x - a.x) * s.y - (c.y - a.y) * s.x) / den;
+  const u = ((c.x - a.x) * r.y - (c.y - a.y) * r.x) / den;
+  const eps = 1e-9;
+  if (t <= eps || t >= 1 - eps || u <= eps || u >= 1 - eps) return null;
+  return { x: a.x + r.x * t, y: a.y + r.y * t };
+}
+
+// Separa uma curva que se cruza em laços simples
+function splitLoops(pts, depth) {
+  depth = depth || 0;
+  const n = pts.length;
+  if (n < 3) return [];
+  if (depth > 400) return [pts];
+  for (let i = 0; i < n; i++) {
+    const a = pts[i], b = pts[(i + 1) % n];
+    const minx = Math.min(a.x, b.x), maxx = Math.max(a.x, b.x), miny = Math.min(a.y, b.y), maxy = Math.max(a.y, b.y);
+    for (let j = i + 2; j < n; j++) {
+      if (i === 0 && j === n - 1) continue;
+      const c = pts[j], d = pts[(j + 1) % n];
+      if (Math.max(c.x, d.x) < minx || Math.min(c.x, d.x) > maxx || Math.max(c.y, d.y) < miny || Math.min(c.y, d.y) > maxy) continue;
+      const X = segCrossPoint(a, b, c, d);
+      if (X) {
+        const l1 = [X].concat(pts.slice(i + 1, j + 1));
+        const l2 = [X].concat(pts.slice(j + 1), pts.slice(0, i + 1));
+        return splitLoops(l1, depth + 1).concat(splitLoops(l2, depth + 1));
+      }
+    }
+  }
+  return [pts];
+}
+
+// Todas as áreas internas a "dist" da borda (pode dar mais de uma se o lote tiver gargalo)
+function getOffsetPolygonsInward(poly, dist) {
+  const P = cleanPolygon(poly);
+  if (P.length < 3) return [];
+  if (!(dist > 0)) return [P.slice()];
+  const sign = polySignedArea(P) > 0;
+  const tol = dist * 0.97;
+  return splitLoops(rawInsetCurve(P, dist)).filter(loop => {
+    if (loop.length < 3) return false;
+    const A = polySignedArea(loop);
+    if ((A > 0) !== sign || Math.abs(A) < 1e-9) return false;
+    return loop.every(q => pointInPolygon(q, P) && distToBoundary(q, P) >= tol);
+  });
+}
+
+// Compatibilidade: a maior área interna
+function getOffsetPolygonInward(poly, dist) {
+  const loops = getOffsetPolygonsInward(poly, dist);
+  if (!loops.length) return [];
+  return loops.reduce((best, l) => Math.abs(polySignedArea(l)) > Math.abs(polySignedArea(best)) ? l : best);
+}
+
+/* ─── Segment intersection ─── */
+function segmentIntersect(p1, p2, p3, p4) {
+  const d1x = p2.x - p1.x, d1y = p2.y - p1.y;
+  const d2x = p4.x - p3.x, d2y = p4.y - p3.y;
+  const denom = d1x * d2y - d1y * d2x;
+  if (Math.abs(denom) < 1e-9) return null;
+  const t = ((p3.x - p1.x) * d2y - (p3.y - p1.y) * d2x) / denom;
+  const u = ((p3.x - p1.x) * d1y - (p3.y - p1.y) * d1x) / denom;
+  if (u < -1e-9 || u > 1 + 1e-9) return null;
+  return { x: p1.x + t * d1x, y: p1.y + t * d1y, t };
+}
+
+function lineIntersectPolygon(origin, dirX, dirY, halfLen, poly) {
+  const p1 = { x: origin.x - dirX * halfLen, y: origin.y - dirY * halfLen };
+  const p2 = { x: origin.x + dirX * halfLen, y: origin.y + dirY * halfLen };
+  const hits = [];
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    const r = segmentIntersect(p1, p2, a, b);
+    if (r) hits.push(r);
+  }
+  hits.sort((a, b) => a.t - b.t);
+  const cleaned = [];
+  hits.forEach(h => {
+    if (cleaned.length === 0 || Math.abs(h.t - cleaned[cleaned.length - 1].t) > 1e-6) cleaned.push(h);
+  });
+  const segments = [];
+  for (let i = 0; i + 1 < cleaned.length; i += 2) {
+    segments.push([{ x: cleaned[i].x, y: cleaned[i].y }, { x: cleaned[i + 1].x, y: cleaned[i + 1].y }]);
+  }
+  return segments;
+}
+
+/* ─── Build AB lines ─── */
+// Trechos de uma reta (O + t·u) que ficam dentro do polígono
+function lineIntervalsInPolygon(O, u, poly) {
+  const nx = -u.y, ny = u.x, ts = [];
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[j], b = poly[i];
+    const sa = (a.x - O.x) * nx + (a.y - O.y) * ny, sb = (b.x - O.x) * nx + (b.y - O.y) * ny;
+    if ((sa > 0) !== (sb > 0)) {
+      const f = sa / (sa - sb);
+      const px = a.x + (b.x - a.x) * f, py = a.y + (b.y - a.y) * f;
+      ts.push((px - O.x) * u.x + (py - O.y) * u.y);
+    }
+  }
+  ts.sort((x, y) => x - y);
+  const iv = [];
+  for (let k = 0; k + 1 < ts.length; k += 2) iv.push([ts[k], ts[k + 1]]);
+  return iv;
+}
+
+// Trecho da reta que fica a menos de D de um lado (a,b) do polígono
+function capsuleInterval(O, u, a, b, D) {
+  let lo = Infinity, hi = -Infinity;
+  const disc = c => {
+    const wx = c.x - O.x, wy = c.y - O.y;
+    const tc = wx * u.x + wy * u.y, perp2 = wx * wx + wy * wy - tc * tc;
+    if (perp2 < D * D) { const h = Math.sqrt(D * D - perp2); lo = Math.min(lo, tc - h); hi = Math.max(hi, tc + h); }
+  };
+  disc(a); disc(b);
+  const L = Math.hypot(b.x - a.x, b.y - a.y);
+  if (L > 1e-12) {
+    const ex = (b.x - a.x) / L, ey = (b.y - a.y) / L, nx = -ey, ny = ex;
+    const ox = O.x - a.x, oy = O.y - a.y;
+    let t0 = -Infinity, t1 = Infinity, ok = true;
+    const clamp = (alpha, beta, mn, mx) => {
+      if (Math.abs(beta) < 1e-12) { if (alpha < mn || alpha > mx) ok = false; return; }
+      let r0 = (mn - alpha) / beta, r1 = (mx - alpha) / beta;
+      if (r0 > r1) { const t = r0; r0 = r1; r1 = t; }
+      t0 = Math.max(t0, r0); t1 = Math.min(t1, r1);
+    };
+    clamp(ox * ex + oy * ey, u.x * ex + u.y * ey, 0, L);
+    clamp(ox * nx + oy * ny, u.x * nx + u.y * ny, -D, D);
+    if (ok && t0 < t1) { lo = Math.min(lo, t0); hi = Math.max(hi, t1); }
+  }
+  return lo < hi ? [lo, hi] : null;
+}
+
+function subtractIntervals(base, cuts) {
+  cuts.sort((x, y) => x[0] - y[0]);
+  const out = [];
+  base.forEach(([s0, s1]) => {
+    let cur = s0;
+    for (const [c0, c1] of cuts) {
+      if (c1 <= cur) continue;
+      if (c0 >= s1) break;
+      if (c0 > cur) out.push([cur, Math.min(c0, s1)]);
+      cur = Math.max(cur, c1);
+      if (cur >= s1) break;
+    }
+    if (cur < s1) out.push([cur, s1]);
+  });
+  return out;
+}
+
+function buildABLines(poly, swath, angleDeg, hPasses) {
+  const P = cleanPolygon(poly);
+  if (P.length < 3 || !(swath > 0)) return [];
+  const D = hPasses > 0 ? hPasses * swath : 0;   // linhas AB começam depois das cabeceiras
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  P.forEach(p => {
+    minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
+    maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
+  });
+  const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+  const rad = angleDeg * Math.PI / 180;
+  const u = { x: Math.sin(rad), y: -Math.cos(rad) };
+  const perpX = -u.y, perpY = u.x;
+  const diagonal = Math.hypot(maxX - minX, maxY - minY);
+  const numLines = Math.ceil(diagonal / swath) + 1;
+
+  const lines = [];
+  for (let i = -numLines; i <= numLines; i++) {
+    const O = { x: cx + perpX * i * swath, y: cy + perpY * i * swath };
+    let iv = lineIntervalsInPolygon(O, u, P);
+    if (!iv.length) continue;
+    if (D > 0) {
+      const cuts = [];
+      for (let k = 0, j = P.length - 1; k < P.length; j = k++) {
+        const c = capsuleInterval(O, u, P[j], P[k], D);
+        if (c) cuts.push(c);
+      }
+      iv = subtractIntervals(iv, cuts);
+    }
+    iv.forEach(([t0, t1]) => {
+      if (t1 - t0 > swath * 0.4) {
+        lines.push({
+          a: { x: O.x + u.x * t0, y: O.y + u.y * t0 },
+          b: { x: O.x + u.x * t1, y: O.y + u.y * t1 },
+          idx: lines.length, row: i
+        });
+      }
+    });
+  }
+  return lines;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   POINTS MANAGEMENT
+═══════════════════════════════════════════════════════════════ */
+function renderPoints() {
+  const list = document.getElementById('ptsList');
+  list.innerHTML = '';
+  points.forEach((p, i) => {
+    const row = document.createElement('div');
+    row.className = 'pt-row';
+    row.innerHTML = `
+      <span class="pt-idx">${i + 1}</span>
+      <input type="number" class="pt-lat" value="${p.lat.toFixed(7)}" step="0.0000001"
+             onchange="updatePoint(${i},'lat',this.value)" placeholder="Latitude">
+      <input type="number" class="pt-lon" value="${p.lon.toFixed(7)}" step="0.0000001"
+             onchange="updatePoint(${i},'lon',this.value)" placeholder="Longitude">
+      <button class="pt-del" onclick="removePoint(${i})">×</button>
+    `;
+    list.appendChild(row);
+  });
+  document.getElementById('statPoints').textContent = points.length;
+}
+
+function addPoint() {
+  const last = points[points.length - 1];
+  const base = last ? { lat: +(last.lat + 0.0005).toFixed(7), lon: last.lon } : { lat: -17.783, lon: -63.182 };
+  points.push(base);
+  renderPoints();
+  scheduleRender();
+}
+
+function removePoint(i) {
+  points.splice(i, 1);
+  renderPoints();
+  scheduleRender();
+}
+
+function clearPoints() {
+  if (points.length && !confirm('Limpar todos os vértices?')) return;
+  points = [];
+  renderPoints();
+  scheduleRender();
+}
+
+function updatePoint(i, field, val) {
+  points[i][field] = parseFloat(val) || 0;
+  scheduleRender();
+}
+
+function showPaste() {
+  document.getElementById('pasteArea').hidden = false;
+}
+
+function applyPaste() {
+  const raw = document.getElementById('pasteInput').value.trim();
+  const newPts = [];
+  raw.split('\n').forEach(line => {
+    line = line.trim().replace(/\s+/g, ' ');
+    if (!line) return;
+    // Accept: lat,lon or lat lon or lat;lon
+    const parts = line.split(/[,;\s]+/);
+    if (parts.length >= 2) {
+      const lat = parseFloat(parts[0]), lon = parseFloat(parts[1]);
+      if (!isNaN(lat) && !isNaN(lon)) newPts.push({ lat, lon });
+    }
+  });
+  if (!newPts.length) { showToast('Nenhuma coordenada válida encontrada', true); return; }
+  points = newPts;
+  document.getElementById('pasteArea').hidden = true;
+  document.getElementById('pasteInput').value = '';
+  renderPoints();
+  scheduleRender();
+  fitView();
+  showToast(`${newPts.length} vértices importados`);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   PARAMS
+═══════════════════════════════════════════════════════════════ */
+function updateParams() {
+  swathWidth = +document.getElementById('swathWidth').value;
+  workSpeed = +document.getElementById('workSpeed').value;
+  abAngle = +document.getElementById('abAngle').value;
+  headlandPasses = +document.getElementById('headlandPasses').value;
+  document.getElementById('swathVal').textContent = `${swathWidth} m`;
+  document.getElementById('speedVal').textContent = `${workSpeed.toFixed(1)} km/h`;
+  document.getElementById('angleVal').textContent = `${abAngle}°`;
+  document.getElementById('headlandVal').textContent = headlandPasses > 0
+    ? `${headlandPasses} passada${headlandPasses > 1 ? 's' : ''}`
+    : 'Sem Bordas';
+  scheduleRender();
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   GEOMETRY UPDATE
+═══════════════════════════════════════════════════════════════ */
+function recomputeLotLines() {
+  // Faixa em unidades do desenho: com GPS 1 unidade = 1 m; sem GPS usa a escala definida (📏)
+  const k = unitScale();
+  const swathU = k ? swathWidth / k : 0;
+  lots.forEach(function(lot) {
+    if (lot.pts.length >= 3 && swathU > 0) {
+      lot._abLines = buildABLines(lot.pts, swathU, abAngle, headlandPasses);
+      lot._hlPolys = [];
+      for (let i = 1; i <= headlandPasses; i++) {
+        getOffsetPolygonsInward(lot.pts, i * swathU).forEach(p => lot._hlPolys.push(p));
+      }
+    } else {
+      lot._abLines = []; lot._hlPolys = [];
+    }
+  });
+  if (localPoly.length < 3) updateLotStats();
+}
+
+// Painel de dados quando não há talhão GPS: soma de todos os lotes desenhados
+function updateLotStats() {
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  if (!lots.length) {
+    ['statArea', 'statLines', 'statDist', 'statTime', 'statPerim'].forEach(id => set(id, '—'));
+    set('statPoints', points.length);
+    return;
+  }
+  const k = unitScale();
+  let ha = 0, lines = 0, distU = 0, perimU = 0, verts = 0;
+  lots.forEach(lot => {
+    ha += lot.areaHaOverride !== null ? lot.areaHaOverride : (lotAreaHa(lot.pts) || 0);
+    verts += lot.pts.length;
+    if (lot.pts.length >= 3) perimU += calcPerimeter(lot.pts);
+    (lot._abLines || []).forEach(l => { distU += Math.hypot(l.b.x - l.a.x, l.b.y - l.a.y); });
+    (lot._hlPolys || []).forEach(p => { distU += calcPerimeter(p); });
+    lines += (lot._abLines || []).length;
+  });
+  set('statArea', ha > 0 ? ha.toFixed(2) : '—');
+  set('statPoints', verts);
+  if (k) {
+    const km = distU * k / 1000;
+    set('statPerim', Math.round(perimU * k));
+    set('statLines', lines);
+    set('statDist', km.toFixed(1));
+    set('statTime', workSpeed > 0 ? (km / workSpeed).toFixed(1) : '—');
+  } else {
+    ['statLines', 'statDist', 'statTime', 'statPerim'].forEach(id => set(id, '—'));
+  }
+}
+
+function recomputeGeometry() {
+  if (sim) setTimeout(rebuildSim, 0);
+  recomputeLotLines();
+  if (points.length < 2) {
+    localPoly = []; abLines = []; headlandPolys = [];
+    updateStats(null);
+    return;
+  }
+  // Set reference to centroid
+  refLat = points.reduce((s, p) => s + p.lat, 0) / points.length;
+  refLon = points.reduce((s, p) => s + p.lon, 0) / points.length;
+  localPoly = points.map(p => toLocal(p.lat, p.lon));
+
+  if (points.length >= 3) {
+    // Headland insets
+    headlandPolys = [];
+    for (let i = 1; i <= headlandPasses; i++) {
+      getOffsetPolygonsInward(localPoly, i * swathWidth).forEach(p => headlandPolys.push(p));
+    }
+    // AB lines
+    abLines = buildABLines(localPoly, swathWidth, abAngle, headlandPasses);
+    updateStats(localPoly);
+  } else {
+    headlandPolys = []; abLines = [];
+    updateStats(localPoly);
+  }
+}
+
+function updateStats(poly) {
+  if ((!poly || poly.length < 3) && lots.length) { updateLotStats(); return; }
+  if (!poly || poly.length < 3) {
+    document.getElementById('statArea').textContent = '—';
+    document.getElementById('statLines').textContent = '—';
+    document.getElementById('statDist').textContent = '—';
+    document.getElementById('statTime').textContent = '—';
+    document.getElementById('statPerim').textContent = '—';
+    return;
+  }
+  const areaM2 = calcArea(poly);
+  const areaHa = areaM2 / 10000;
+  const perim = calcPerimeter(poly);
+
+  // Total distance: headland passes + AB lines
+  let totalDist = 0;
+  for (let i = 1; i <= headlandPasses; i++) {
+    getOffsetPolygonsInward(poly, i * swathWidth).forEach(p => { totalDist += calcPerimeter(p); });
+  }
+  abLines.forEach(l => totalDist += Math.hypot(l.b.x - l.a.x, l.b.y - l.a.y));
+  const totalKm = totalDist / 1000;
+  const timeH = totalKm / workSpeed;
+
+  document.getElementById('statArea').textContent = areaHa.toFixed(2);
+  document.getElementById('statLines').textContent = abLines.length;
+  document.getElementById('statDist').textContent = totalKm.toFixed(1);
+  document.getElementById('statTime').textContent = timeH.toFixed(1);
+  document.getElementById('statPerim').textContent = Math.round(perim);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   CANVAS
+═══════════════════════════════════════════════════════════════ */
+const canvas = document.getElementById('mainCanvas');
+const ctx = canvas.getContext('2d');
+
+function scheduleRender() {
+  recomputeGeometry();
+  if (renderTimer) cancelAnimationFrame(renderTimer);
+  renderTimer = requestAnimationFrame(draw);
+}
+
+function resizeCanvas() {
+  const wrap = document.getElementById('canvasWrap');
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = wrap.clientWidth * dpr;
+  canvas.height = wrap.clientHeight * dpr;
+  canvas.style.width = wrap.clientWidth + 'px';
+  canvas.style.height = wrap.clientHeight + 'px';
+  ctx.scale(dpr, dpr);
+  draw();
+}
+
+function worldToScreen(x, y) {
+  return {
+    sx: canvas.clientWidth / 2 + (x - panX) * zoom,
+    sy: canvas.clientHeight / 2 - (y - panY) * zoom  // y flipped (north = up)
+  };
+}
+
+function screenToWorld(sx, sy) {
+  return {
+    x: panX + (sx - canvas.clientWidth / 2) / zoom,
+    y: panY - (sy - canvas.clientHeight / 2) / zoom
+  };
+}
+
+// Save world-space corners of canvas at the moment a map image is loaded
+function captureMapBgWorld() {
+  const W = canvas.clientWidth, H = canvas.clientHeight;
+  mapBgWorld = {
+    x:  panX - W / (2 * zoom),   // world X of left edge
+    y:  panY + H / (2 * zoom),   // world Y of top edge (north-up)
+    ww: W / zoom,                 // world width
+    hw: H / zoom                  // world height
+  };
+}
+
+function draw() {
+  const W = canvas.clientWidth, H = canvas.clientHeight;
+  ctx.clearRect(0, 0, W, H);
+
+  // Background
+  const isDark = !document.documentElement.hasAttribute('data-theme') ||
+                  document.documentElement.getAttribute('data-theme') === 'dark';
+  ctx.fillStyle = isDark ? '#0D2017' : '#C8E5C0';
+  ctx.fillRect(0, 0, W, H);
+
+  // Map background image — rendered at its world-space position so zoom/pan works
+  if (mapBg && mapBgVisible && mapBgWorld) {
+    const { sx: mx, sy: my } = worldToScreen(mapBgWorld.x, mapBgWorld.y);
+    const { sx: mx2, sy: my2 } = worldToScreen(mapBgWorld.x + mapBgWorld.ww, mapBgWorld.y - mapBgWorld.hw);
+    ctx.globalAlpha = 0.75;
+    ctx.drawImage(mapBg, mx, my, mx2 - mx, my2 - my);
+    ctx.globalAlpha = 1;
+  }
+
+  if (localPoly.length < 2 && !(mapBg && mapBgVisible) && !lots.length && drawMode !== 'draw' && drawMode !== 'scale') {
+    ctx.fillStyle = isDark ? '#2B5038' : '#8CBC80';
+    ctx.font = '500 14px Inter, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('Adicione vértices GPS ou use ✏️ Desenhar sobre o mapa', W / 2, H / 2 - (drawMode === 'draw' ? 20 : 0));
+  }
+
+  const hasGPS = localPoly.length >= 2;
+
+  // Scale indicator
+  if (hasGPS) {
+    const scaleMeters = 100 / zoom;
+    document.getElementById('scaleInfo').textContent =
+      scaleMeters < 1000 ? `Escala: ${Math.round(scaleMeters)} m / 100px`
+                          : `Escala: ${(scaleMeters / 1000).toFixed(1)} km / 100px`;
+  } else {
+    document.getElementById('scaleInfo').textContent = drawMode === 'draw' ? 'Modo: Desenhar Lote'
+      : drawMode === 'scale' ? 'Modo: Definir escala'
+      : metersPerUnit ? `Escala: ${Math.round(100 / zoom * metersPerUnit)} m / 100px` : '';
+  }
+
+  function polyPath(poly) {
+    ctx.beginPath();
+    poly.forEach((p, i) => {
+      const { sx, sy } = worldToScreen(p.x, p.y);
+      i === 0 ? ctx.moveTo(sx, sy) : ctx.lineTo(sx, sy);
+    });
+    ctx.closePath();
+  }
+
+  // ── AB pass lines ──
+  if (hasGPS && abLines.length) {
+    ctx.lineWidth = Math.max(0.5, zoom * 0.5);
+    abLines.forEach((l, i) => {
+      const { sx: ax, sy: ay } = worldToScreen(l.a.x, l.a.y);
+      const { sx: bx, sy: by } = worldToScreen(l.b.x, l.b.y);
+      ctx.strokeStyle = i % 2 === 0 ? 'rgba(109,232,105,0.55)' : 'rgba(109,232,105,0.40)';
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(bx, by);
+      ctx.stroke();
+      // Arrow at midpoint indicating direction
+      if (zoom > 0.5) {
+        const mx = (ax + bx) / 2, my = (ay + by) / 2;
+        const dx = bx - ax, dy = by - ay;
+        const len = Math.hypot(dx, dy);
+        if (len > 10) {
+          const ux = dx / len, uy = dy / len;
+          const aSize = Math.min(8, len * 0.2);
+          ctx.fillStyle = 'rgba(109,232,105,0.7)';
+          ctx.beginPath();
+          ctx.moveTo(mx + ux * aSize, my + uy * aSize);
+          ctx.lineTo(mx - ux * aSize - uy * aSize * 0.5, my - uy * aSize + ux * aSize * 0.5);
+          ctx.lineTo(mx - ux * aSize + uy * aSize * 0.5, my - uy * aSize - ux * aSize * 0.5);
+          ctx.fill();
+        }
+      }
+    });
+  }
+
+  // ── Headland inset polygons ──
+  headlandPolys.forEach((p, i) => {
+    polyPath(p);
+    ctx.strokeStyle = 'rgba(78,201,74,0.45)';
+    ctx.setLineDash([6, 4]);
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = 'rgba(45,138,56,0.06)';
+    ctx.fill();
+  });
+
+  // ── Field boundary ──
+  if (hasGPS && localPoly.length >= 3) {
+    polyPath(localPoly);
+    ctx.fillStyle = 'rgba(78,201,74,0.08)';
+    ctx.fill();
+    ctx.strokeStyle = '#4EC94A';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+  }
+
+  // ── Vertices ──
+  if (hasGPS) localPoly.forEach((p, i) => {
+    const { sx, sy } = worldToScreen(p.x, p.y);
+    ctx.fillStyle = '#4EC94A';
+    ctx.beginPath();
+    ctx.arc(sx, sy, 4, 0, Math.PI * 2);
+    ctx.fill();
+    if (zoom > 0.3) {
+      ctx.fillStyle = isDark ? '#D8EDD0' : '#132019';
+      ctx.font = `bold ${Math.max(10, 11 / zoom)}px Rajdhani, sans-serif`;
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(i + 1, sx + 6, sy - 4);
+    }
+  });
+
+  // ── AB reference line ──
+  if (hasGPS && localPoly.length >= 2) {
+    let cx = 0, cy = 0;
+    localPoly.forEach(p => { cx += p.x; cy += p.y; });
+    cx /= localPoly.length; cy /= localPoly.length;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    localPoly.forEach(p => { minX = Math.min(minX, p.x); minY = Math.min(minY, p.y); maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y); });
+    const diag = Math.hypot(maxX - minX, maxY - minY) * 0.6;
+    const rad = abAngle * Math.PI / 180;
+    const dX = Math.sin(rad), dY = -Math.cos(rad);
+    const p1 = { x: cx - dX * diag, y: cy - dY * diag };
+    const p2 = { x: cx + dX * diag, y: cy + dY * diag };
+    const { sx: sx1, sy: sy1 } = worldToScreen(p1.x, p1.y);
+    const { sx: sx2, sy: sy2 } = worldToScreen(p2.x, p2.y);
+    ctx.strokeStyle = '#D4A017';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([8, 5]);
+    ctx.beginPath(); ctx.moveTo(sx1, sy1); ctx.lineTo(sx2, sy2); ctx.stroke();
+    ctx.setLineDash([]);
+    // AB label
+    ctx.fillStyle = '#D4A017';
+    ctx.font = 'bold 11px Rajdhani, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`AB ${abAngle}°`, (sx1 + sx2) / 2, (sy1 + sy2) / 2 - 8);
+  }
+
+  // ── Drawn lots ──
+  lots.forEach((lot, li) => {
+    if (lot.pts.length < 1) return;
+    const color = LOT_COLORS[li % LOT_COLORS.length];
+
+    // AB pass lines inside lot
+    if (lot._abLines && lot._abLines.length) {
+      ctx.lineWidth = 1.6;
+      lot._abLines.forEach(function(l, i) {
+        const { sx: ax, sy: ay } = worldToScreen(l.a.x, l.a.y);
+        const { sx: bx, sy: by } = worldToScreen(l.b.x, l.b.y);
+        ctx.strokeStyle = i % 2 === 0 ? color + 'EE' : color + 'BB';
+        ctx.setLineDash([]);
+        ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+      });
+    }
+    // Headland inset rings
+    if (lot._hlPolys && lot._hlPolys.length) {
+      lot._hlPolys.forEach(function(p) {
+        ctx.beginPath();
+        p.forEach(function(pt, i) {
+          const { sx, sy } = worldToScreen(pt.x, pt.y);
+          i === 0 ? ctx.moveTo(sx, sy) : ctx.lineTo(sx, sy);
+        });
+        ctx.closePath();
+        ctx.strokeStyle = color + 'CC';
+        ctx.setLineDash([6, 4]); ctx.lineWidth = 2; ctx.stroke(); ctx.setLineDash([]);
+      });
+    }
+
+    ctx.beginPath();
+    lot.pts.forEach((p, i) => {
+      const { sx, sy } = worldToScreen(p.x, p.y);
+      i === 0 ? ctx.moveTo(sx, sy) : ctx.lineTo(sx, sy);
+    });
+    if (lot.pts.length >= 3) ctx.closePath();
+    if (lot.pts.length >= 3) { ctx.fillStyle = color + '22'; ctx.fill(); }
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([]);
+    ctx.stroke();
+    if (drawMode === 'edit') {
+      lot.pts.forEach((p, vi) => {
+        const { sx, sy } = worldToScreen(p.x, p.y);
+        const isHov = hoveredVtx && hoveredVtx.lotIdx === li && hoveredVtx.vtxIdx === vi;
+        const isSel = selVtx && selVtx.lotIdx === li && selVtx.vtxIdx === vi;
+        ctx.fillStyle = isSel ? '#E05A4A' : (isHov ? '#fff' : color);
+        ctx.strokeStyle = isSel ? '#fff' : 'rgba(0,0,0,0.5)';
+        ctx.lineWidth = isSel ? 2.5 : 1.5;
+        ctx.beginPath();
+        ctx.arc(sx, sy, isSel ? 9 : (isHov ? 8 : 6), 0, Math.PI * 2);
+        ctx.fill(); ctx.stroke();
+      });
+    }
+    if (lot.pts.length >= 3) {
+      let lx = 0, ly = 0;
+      lot.pts.forEach(p => { const {sx, sy} = worldToScreen(p.x, p.y); lx += sx; ly += sy; });
+      lx /= lot.pts.length; ly /= lot.pts.length;
+      const ha = lot.areaHaOverride !== null ? lot.areaHaOverride : (lotAreaHa(lot.pts) || 0);
+      ctx.font = 'bold 13px Rajdhani, sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.strokeStyle = 'rgba(0,0,0,0.7)'; ctx.lineWidth = 3;
+      ctx.strokeText(lot.name, lx, ly - 9); ctx.strokeText(ha.toFixed(1) + ' ha', lx, ly + 9);
+      ctx.fillStyle = color;
+      ctx.fillText(lot.name, lx, ly - 9); ctx.fillText(ha.toFixed(1) + ' ha', lx, ly + 9);
+    }
+  });
+
+  // ── Stone markers (bola de pedras) ──
+  stoneMarkers.forEach((m, idx) => {
+    const { sx, sy } = worldToScreen(m.x, m.y);
+    ctx.save();
+    ctx.beginPath(); ctx.arc(sx, sy, 10, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(224,80,60,0.88)'; ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke();
+    ctx.restore();
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#fff';
+    ctx.fillText('⛏', sx, sy);
+    if (zoom > 0.4) {
+      ctx.font = '10px Inter, sans-serif';
+      ctx.fillStyle = isDark ? '#F0C040' : '#B05000';
+      ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+      ctx.fillText(m.label || ('P' + (idx + 1)), sx + 11, sy - 2);
+    }
+  });
+
+  // ── Windrow lines (cordões de desmonte) ──
+  windrowLines.forEach((w, wi) => {
+    if (w.pts.length < 2) return;
+    ctx.save();
+    ctx.beginPath();
+    w.pts.forEach((p, i) => {
+      const { sx, sy } = worldToScreen(p.x, p.y);
+      i === 0 ? ctx.moveTo(sx, sy) : ctx.lineTo(sx, sy);
+    });
+    ctx.strokeStyle = '#D4A017'; ctx.lineWidth = 3;
+    ctx.setLineDash([14, 7]); ctx.stroke(); ctx.setLineDash([]);
+    ctx.restore();
+    [w.pts[0], w.pts[w.pts.length - 1]].forEach(p => {
+      const { sx, sy } = worldToScreen(p.x, p.y);
+      ctx.beginPath(); ctx.arc(sx, sy, 4, 0, Math.PI * 2);
+      ctx.fillStyle = '#D4A017'; ctx.fill();
+    });
+    if (zoom > 0.4) {
+      const mid = w.pts[Math.floor(w.pts.length / 2)];
+      const { sx, sy } = worldToScreen(mid.x, mid.y);
+      ctx.font = '10px Inter, sans-serif';
+      ctx.fillStyle = '#D4A017';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+      ctx.fillText(w.label || ('C' + (wi + 1)), sx, sy - 7);
+    }
+  });
+
+  // ── Windrow in progress ──
+  if (drawObstMode === 'windrow' && windrowPts.length > 0) {
+    const pts2 = mouseWorld ? [...windrowPts, mouseWorld] : windrowPts;
+    ctx.save();
+    ctx.beginPath();
+    pts2.forEach((p, i) => {
+      const { sx, sy } = worldToScreen(p.x, p.y);
+      i === 0 ? ctx.moveTo(sx, sy) : ctx.lineTo(sx, sy);
+    });
+    ctx.strokeStyle = 'rgba(240,192,64,0.75)'; ctx.lineWidth = 2;
+    ctx.setLineDash([8, 5]); ctx.stroke(); ctx.setLineDash([]);
+    ctx.restore();
+    windrowPts.forEach(p => {
+      const { sx, sy } = worldToScreen(p.x, p.y);
+      ctx.beginPath(); ctx.arc(sx, sy, 4, 0, Math.PI * 2);
+      ctx.fillStyle = '#F0C040'; ctx.fill();
+    });
+  }
+
+  // Instruction bar for obstacle modes
+  if (drawObstMode === 'stone') {
+    ctx.fillStyle = 'rgba(224,80,60,0.85)';
+    ctx.fillRect(10, H - 36, 340, 26);
+    ctx.fillStyle = '#fff'; ctx.font = '12px Inter, sans-serif';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillText('🪨 Clique para marcar bola de pedras · Botão 🪨 para sair', 18, H - 23);
+  }
+  if (drawObstMode === 'windrow') {
+    ctx.fillStyle = 'rgba(180,130,10,0.88)';
+    ctx.fillRect(10, H - 36, 400, 26);
+    ctx.fillStyle = '#fff'; ctx.font = '12px Inter, sans-serif';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillText('〰️ Clique para pontos do cordão · Duplo-clique para finalizar (' + windrowPts.length + ' pts)', 18, H - 23);
+  }
+
+  // ── Drawing preview ──
+  if (drawMode === 'draw' && drawPts.length > 0) {
+    const color = LOT_COLORS[lots.length % LOT_COLORS.length];
+    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.setLineDash([5, 4]);
+    ctx.beginPath();
+    drawPts.forEach((p, i) => {
+      const { sx, sy } = worldToScreen(p.x, p.y);
+      i === 0 ? ctx.moveTo(sx, sy) : ctx.lineTo(sx, sy);
+    });
+    if (mouseWorld) { const { sx, sy } = worldToScreen(mouseWorld.x, mouseWorld.y); ctx.lineTo(sx, sy); }
+    ctx.stroke(); ctx.setLineDash([]);
+    drawPts.forEach((p, i) => {
+      const { sx, sy } = worldToScreen(p.x, p.y);
+      ctx.fillStyle = i === 0 ? '#fff' : color;
+      ctx.strokeStyle = 'rgba(0,0,0,0.5)'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(sx, sy, i === 0 ? 7 : 4, 0, Math.PI * 2);
+      ctx.fill(); ctx.stroke();
+    });
+    const hint = W < 600 ? `Toque para adicionar pontos (${drawPts.length} pts)`
+                         : `Clique para adicionar pontos · Backspace desfaz · Duplo clique fecha (${drawPts.length} pts)`;
+    ctx.font = '12px Inter, sans-serif';
+    ctx.fillStyle = 'rgba(0,0,0,0.72)';
+    ctx.fillRect(10, H - 36, ctx.measureText(hint).width + 16, 26);
+    ctx.fillStyle = color;
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillText(hint, 18, H - 23);
+  }
+
+  // ── Scale calibration preview ──
+  if (drawMode === 'scale') {
+    ctx.strokeStyle = '#F0D020'; ctx.lineWidth = 2; ctx.setLineDash([6, 4]);
+    if (scalePts.length === 1 && mouseWorld) {
+      const a = worldToScreen(scalePts[0].x, scalePts[0].y), b = worldToScreen(mouseWorld.x, mouseWorld.y);
+      ctx.beginPath(); ctx.moveTo(a.sx, a.sy); ctx.lineTo(b.sx, b.sy); ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    scalePts.forEach(p => {
+      const { sx, sy } = worldToScreen(p.x, p.y);
+      ctx.fillStyle = '#F0D020'; ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(sx, sy, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    });
+    ctx.fillStyle = 'rgba(0,0,0,0.72)'; ctx.fillRect(10, H - 36, 370, 26);
+    ctx.fillStyle = '#F0D020'; ctx.font = '12px Inter, sans-serif';
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillText(`📏 Escala: clique o ${scalePts.length ? '2º' : '1º'} ponto de distância conhecida`, 18, H - 23);
+  }
+
+  if (sim) drawSim();
+  updateDrawBar();
+}
+
+/* ─── Fit & Zoom ─── */
+function fitView() {
+  if (!localPoly.length) return;
+  const W = canvas.clientWidth, H = canvas.clientHeight;
+  const pad = 50;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  localPoly.forEach(p => {
+    minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
+    maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
+  });
+  const polyW = maxX - minX, polyH = maxY - minY;
+  if (polyW < 1 && polyH < 1) { panX = 0; panY = 0; zoom = 1; draw(); return; }
+  zoom = Math.min((W - pad * 2) / polyW, (H - pad * 2) / polyH) * 0.9;
+  panX = (minX + maxX) / 2;
+  panY = (minY + maxY) / 2;
+  draw();
+}
+function zoomIn() { zoom *= 1.25; draw(); }
+function zoomOut() { zoom /= 1.25; draw(); }
+function togglePanMode() {
+  panMode = !panMode;
+  const btn = document.getElementById('btnPanMode');
+  if (btn) {
+    btn.style.background = panMode ? 'var(--accentd)' : 'var(--surf)';
+    btn.style.color = panMode ? '#fff' : 'var(--text)';
+    btn.title = panMode ? 'Modo MOVER ativo — clique para sair' : 'Mover mapa (arraste)';
+    btn.textContent = panMode ? '✋' : '✋';
+  }
+  canvas.style.cursor = panMode ? 'grab' : (drawMode === 'draw' ? 'crosshair' : 'default');
+}
+
+/* ─── Canvas pan/zoom ─── */
+const wrap = document.getElementById('canvasWrap');
+// Zoom mantendo fixo o ponto do mapa sob (sx, sy) — usado pela roda e pela pinça
+function zoomAt(sx, sy, newZoom) {
+  newZoom = Math.max(1e-6, Math.min(newZoom, 1e6));
+  const w = screenToWorld(sx, sy);
+  zoom = newZoom;
+  panX = w.x - (sx - canvas.clientWidth / 2) / zoom;
+  panY = w.y + (sy - canvas.clientHeight / 2) / zoom;
+}
+
+wrap.addEventListener('wheel', e => {
+  e.preventDefault();
+  const f = e.deltaY < 0 ? 1.12 : 0.89;
+  const { sx, sy } = getCanvasPos(e);
+  zoomAt(sx, sy, zoom * f);
+  draw();
+}, { passive: false });
+
+// ── Toque (celular/tablet): 1 dedo arrasta, 2 dedos dão zoom na pinça ──
+// Toque rápido (sem arrastar) continua virando clique: adiciona ponto, pedra, etc.
+let pinch = null;      // {d0, z0, mid}
+let touchPan = null;   // {x, y, moved}
+function touchPos(t) { const r = canvas.getBoundingClientRect(); return { sx: t.clientX - r.left, sy: t.clientY - r.top }; }
+wrap.addEventListener('touchstart', e => {
+  if (e.target.closest('button, input, select, textarea, a, label, #lotsPanel, #simHud')) return;
+  if (e.touches.length === 2) {
+    const a = touchPos(e.touches[0]), b = touchPos(e.touches[1]);
+    pinch = { d0: Math.hypot(a.sx - b.sx, a.sy - b.sy), z0: zoom };
+    touchPan = null; dragInfo = null;
+  } else if (e.touches.length === 1) {
+    const p = touchPos(e.touches[0]);
+    touchPan = { x: p.sx, y: p.sy, moved: false };
+    if (drawMode === 'edit') {
+      const hit = findHoveredVertex(p.sx, p.sy, 22);
+      selVtx = hit || null;
+      if (hit) { dragInfo = hit; touchPan.vertex = true; }
+      draw();
+    }
+  }
+}, { passive: true });
+wrap.addEventListener('touchmove', e => {
+  if (e.target.closest('button, input, select, textarea, a, label, #lotsPanel, #simHud')) return;
+  e.preventDefault();
+  if (e.touches.length === 2 && pinch) {
+    const a = touchPos(e.touches[0]), b = touchPos(e.touches[1]);
+    const d = Math.hypot(a.sx - b.sx, a.sy - b.sy);
+    if (pinch.d0 > 0) zoomAt((a.sx + b.sx) / 2, (a.sy + b.sy) / 2, pinch.z0 * d / pinch.d0);
+    // arrasto com 2 dedos também move o mapa
+    const mid = { sx: (a.sx + b.sx) / 2, sy: (a.sy + b.sy) / 2 };
+    if (pinch.mid) { panX -= (mid.sx - pinch.mid.sx) / zoom; panY += (mid.sy - pinch.mid.sy) / zoom; }
+    pinch.mid = mid;
+    draw(); return;
+  }
+  if (e.touches.length === 1 && touchPan) {
+    const p = touchPos(e.touches[0]);
+    if (touchPan.vertex && dragInfo) {
+      const w = screenToWorld(p.sx, p.sy);
+      lots[dragInfo.lotIdx].pts[dragInfo.vtxIdx] = { x: w.x, y: w.y };
+      lots[dragInfo.lotIdx].areaHaOverride = null;
+      touchPan.moved = true;
+      draw(); return;
+    }
+    if (!touchPan.moved && Math.hypot(p.sx - touchPan.x, p.sy - touchPan.y) < 8) return;
+    touchPan.moved = true;
+    panX -= (p.sx - touchPan.x) / zoom;
+    panY += (p.sy - touchPan.y) / zoom;
+    touchPan.x = p.sx; touchPan.y = p.sy;
+    draw();
+  }
+}, { passive: false });
+wrap.addEventListener('touchend', e => {
+  if (touchPan && touchPan.vertex && dragInfo) {
+    dragInfo = null; recomputeLotLines(); renderLotsList(); draw();
+    if (touchPan.moved && e.cancelable) e.preventDefault(); // não gerar clique depois de arrastar vértice
+  }
+  if (e.touches.length < 2) pinch = null;
+  if (e.touches.length === 0) touchPan = null;
+  isPanning = false;
+});
+
+function getCanvasPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  return { sx: e.clientX - rect.left, sy: e.clientY - rect.top };
+}
+function findHoveredVertex(sx, sy, r) {
+  r = r || 10;
+  for (let li = lots.length - 1; li >= 0; li--)
+    for (let vi = 0; vi < lots[li].pts.length; vi++) {
+      const { sx: vx, sy: vy } = worldToScreen(lots[li].pts[vi].x, lots[li].pts[vi].y);
+      if (Math.hypot(sx - vx, sy - vy) < r) return { lotIdx: li, vtxIdx: vi };
+    }
+  return null;
+}
+wrap.addEventListener('mousedown', function(e) {
+  if (e.button !== 0) return;
+  const { sx, sy } = getCanvasPos(e);
+  // Pan mode takes priority — drag always pans regardless of drawMode
+  if (panMode) {
+    isPanning = true; panSX = e.clientX; panSY = e.clientY; canvas.style.cursor = 'grabbing';
+    return;
+  }
+  if (drawObstMode === 'stone') {
+    stoneMarkers.push({ x: mouseWorld.x, y: mouseWorld.y, label: '' });
+    document.getElementById('btnClearObst').style.display = '';
+    draw(); return;
+  }
+  if (drawObstMode === 'windrow') {
+    // points added on click event to avoid duplicate on mousedown
+    return;
+  }
+  if (drawMode === 'scale') { addScalePoint(screenToWorld(sx, sy)); return; }
+  if (drawMode === 'draw') {
+    if (drawPts.length >= 3) {
+      const { sx: fx, sy: fy } = worldToScreen(drawPts[0].x, drawPts[0].y);
+      if (Math.hypot(sx - fx, sy - fy) < 18) { finishDrawing(); return; }
+    }
+    drawPts.push(screenToWorld(sx, sy));
+    draw(); return;
+  }
+  if (drawMode === 'edit') {
+    const hit = findHoveredVertex(sx, sy);
+    selVtx = hit || null;
+    if (hit) { dragInfo = hit; canvas.style.cursor = 'grabbing'; }
+    draw();
+    return;
+  }
+  isPanning = true; panSX = e.clientX; panSY = e.clientY; canvas.style.cursor = 'grabbing';
+});
+wrap.addEventListener('mousemove', function(e) {
+  const { sx, sy } = getCanvasPos(e);
+  mouseWorld = screenToWorld(sx, sy);
+  if (dragInfo) {
+    lots[dragInfo.lotIdx].pts[dragInfo.vtxIdx] = { x: mouseWorld.x, y: mouseWorld.y };
+    lots[dragInfo.lotIdx].areaHaOverride = null;
+    renderLotsList(); draw(); return;
+  }
+  // isPanning handled before draw-mode checks so pan works even while drawing
+  if (isPanning) {
+    panX -= (e.clientX - panSX) / zoom;
+    panY += (e.clientY - panSY) / zoom;
+    panSX = e.clientX; panSY = e.clientY;
+    draw(); return;
+  }
+  if (drawMode === 'edit') {
+    hoveredVtx = findHoveredVertex(sx, sy);
+    canvas.style.cursor = hoveredVtx ? 'grab' : 'default';
+    draw(); return;
+  }
+  if (drawMode === 'draw' || drawMode === 'scale') { draw(); return; }
+  if (drawObstMode !== 'none') { draw(); return; }
+});
+wrap.addEventListener('mouseup', function() {
+  if (dragInfo) { dragInfo = null; recomputeLotLines(); renderLotsList(); draw(); return; }
+  isPanning = false;
+  if (panMode) { canvas.style.cursor = 'grab'; return; }
+  if (drawMode === 'none' && drawObstMode === 'none') canvas.style.cursor = 'default';
+});
+wrap.addEventListener('mouseleave', function() {
+  isPanning = false; dragInfo = null; mouseWorld = null;
+  canvas.style.cursor = panMode ? 'grab' : (drawMode === 'draw' ? 'crosshair' : 'default');
+  draw();
+});
+wrap.addEventListener('click', function(e) {
+  if (drawObstMode !== 'windrow') return;
+  const { sx, sy } = getCanvasPos(e);
+  windrowPts.push(screenToWorld(sx, sy));
+  draw();
+});
+wrap.addEventListener('dblclick', function(e) {
+  e.preventDefault();
+  if (drawObstMode === 'windrow') {
+    if (windrowPts.length >= 2) {
+      if (windrowPts.length > 2) windrowPts.pop(); // remove dup from double-click
+      windrowLines.push({ pts: windrowPts.slice(), label: '' });
+      windrowPts = [];
+      document.getElementById('btnClearObst').style.display = '';
+      draw();
+      showToast('Cordão de desmonte adicionado');
+    }
+    return;
+  }
+  if (drawMode !== 'draw') return;
+  if (drawPts.length >= 3) finishDrawing();
+});
+
+/* ═══════════════════════════════════════════════════════════════
+   SIMULADOR — trator percorre cabeceiras e linhas AB em vaivém
+═══════════════════════════════════════════════════════════════ */
+let sim = null;
+// sim = { segs:[{a,b,len,work,label}], cum:[], total, workTotal, dist, playing, lastT, raf, k, swathU }
+
+function simFields() {
+  const f = [];
+  if (localPoly.length >= 3 && abLines.length) f.push({ hl: headlandPolys, ab: abLines, name: document.getElementById('talhao').value || 'Talhão' });
+  lots.forEach(l => { if ((l._abLines || []).length) f.push({ hl: l._hlPolys || [], ab: l._abLines, name: l.name }); });
+  return f;
+}
+
+function buildSimSegs() {
+  const k = unitScale();
+  const fields = simFields();
+  if (!k || !fields.length) return null;
+  const segs = [];
+  let cur = null;
+  const go = (a, b, work, label) => {
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    if (len > 1e-9) segs.push({ a, b, len, work, label });
+    cur = b;
+  };
+  const transitTo = (p, label) => { if (cur) go(cur, p, false, label); cur = p; };
+  fields.forEach((fd, fi) => {
+    const pre = fields.length > 1 ? fd.name + ' · ' : '';
+    // Cabeceiras: da mais externa para a mais interna
+    fd.hl.forEach((poly, hi) => {
+      if (poly.length < 3) return;
+      transitTo(poly[0], pre + 'Indo para cabeceira ' + (hi + 1));
+      for (let i = 1; i <= poly.length; i++) go(poly[i - 1], poly[i % poly.length], true, pre + 'Cabeceira ' + (hi + 1) + '/' + fd.hl.length);
+    });
+    // Linhas AB em vaivém
+    const n = fd.ab.length;
+    const rows = [];
+    fd.ab.forEach(l => { const r = l.row !== undefined ? l.row : l.idx; const last = rows[rows.length - 1]; if (last && last.row === r) last.segs.push(l); else rows.push({ row: r, segs: [l] }); });
+    let pass = 0;
+    rows.forEach((rw, ri) => {
+      const rev = ri % 2 === 1;
+      const segs = rev ? rw.segs.slice().reverse() : rw.segs;
+      segs.forEach(l => {
+        pass++;
+        const a = rev ? l.b : l.a, b = rev ? l.a : l.b;
+        transitTo(a, pre + 'Manobra → passada ' + pass);
+        go(a, b, true, pre + 'Passada ' + pass + '/' + n);
+      });
+    });
+  });
+  if (!segs.length) return null;
+  const cum = []; let t = 0, w = 0;
+  segs.forEach(s => { cum.push(t); t += s.len; if (s.work) w += s.len; });
+  return { segs, cum, total: t, workTotal: w, k, swathU: swathWidth / k };
+}
+
+function openSim() {
+  const built = buildSimSegs();
+  if (!built) {
+    if (lots.length && !unitScale()) showToast('Defina a 📏 Escala ou digite a área exata do lote para gerar as linhas', true);
+    else showToast('Sem linhas para simular: adicione o talhão GPS ou desenhe um lote', true);
+    return;
+  }
+  if (sim && sim.raf) cancelAnimationFrame(sim.raf);
+  sim = Object.assign(built, { dist: 0, playing: false, lastT: 0, raf: 0 });
+  document.getElementById('simHud').hidden = false;
+  document.getElementById('btnSim').style.background = 'var(--accent)';
+  document.getElementById('btnSim').style.color = '#0B1810';
+  updateSimHud(); draw();
+  toggleSimPlay();
+}
+
+function rebuildSim() {
+  if (!sim) return;
+  const frac = sim.total ? sim.dist / sim.total : 0, playing = sim.playing;
+  const built = buildSimSegs();
+  if (!built) { closeSim(); return; }
+  if (sim.raf) cancelAnimationFrame(sim.raf);
+  sim = Object.assign(built, { dist: frac * built.total, playing: false, lastT: 0, raf: 0 });
+  if (playing) toggleSimPlay(); else { updateSimHud(); draw(); }
+}
+
+function closeSim() {
+  if (sim && sim.raf) cancelAnimationFrame(sim.raf);
+  sim = null;
+  document.getElementById('simHud').hidden = true;
+  document.getElementById('btnSim').style.background = '';
+  document.getElementById('btnSim').style.color = '';
+  draw();
+}
+
+function restartSim() { if (!sim) return; sim.dist = 0; updateSimHud(); draw(); }
+
+function toggleSimPlay() {
+  if (!sim) return;
+  if (sim.dist >= sim.total) sim.dist = 0;
+  sim.playing = !sim.playing;
+  if (sim.playing) { sim.lastT = performance.now(); sim.raf = requestAnimationFrame(simTick); }
+  else if (sim.raf) cancelAnimationFrame(sim.raf);
+  updateSimHud();
+}
+
+function simTick(t) {
+  if (!sim || !sim.playing) return;
+  const dt = Math.min(0.1, (t - sim.lastT) / 1000); sim.lastT = t;
+  const mult = +document.getElementById('simSpeed').value || 60;
+  const vU = (workSpeed / 3.6) / sim.k;           // unidades do desenho por segundo real de trabalho
+  sim.dist = Math.min(sim.total, sim.dist + vU * dt * mult);
+  if (document.getElementById('simFollow').checked) { const p = simPos(); panX = p.x; panY = p.y; }
+  updateSimHud(); draw();
+  if (sim.dist >= sim.total) { sim.playing = false; updateSimHud(); showToast('Simulação concluída ✓'); return; }
+  sim.raf = requestAnimationFrame(simTick);
+}
+
+function simSegIndex() {
+  let lo = 0, hi = sim.segs.length - 1;
+  while (lo < hi) { const m = (lo + hi + 1) >> 1; if (sim.cum[m] <= sim.dist) lo = m; else hi = m - 1; }
+  return lo;
+}
+
+function simPos() {
+  const i = simSegIndex(), s = sim.segs[i];
+  const f = Math.max(0, Math.min(1, (sim.dist - sim.cum[i]) / s.len));
+  return { x: s.a.x + (s.b.x - s.a.x) * f, y: s.a.y + (s.b.y - s.a.y) * f, i, f, s };
+}
+
+function fmtH(hours) {
+  const m = Math.round(hours * 60);
+  return Math.floor(m / 60) + ':' + String(m % 60).padStart(2, '0');
+}
+const fmtN = (v, d) => v.toFixed(d).replace('.', ',');
+
+function updateSimHud() {
+  if (!sim) return;
+  const p = simPos();
+  let workDone = 0;
+  for (let j = 0; j < p.i; j++) if (sim.segs[j].work) workDone += sim.segs[j].len;
+  if (p.s.work) workDone += p.s.len * p.f;
+  const k = sim.k, done = sim.dist >= sim.total;
+  const kmW = workDone * k / 1000, kmWT = sim.workTotal * k / 1000;
+  const kmTurn = (sim.dist - workDone) * k / 1000;
+  const v = workSpeed > 0 ? workSpeed : 1;
+  const sw = swathWidth;
+  document.getElementById('simPass').textContent = done ? 'Concluído ✓' : p.s.label;
+  const pct = sim.total ? sim.dist / sim.total * 100 : 0;
+  document.getElementById('simBarFill').style.width = pct.toFixed(1) + '%';
+  document.getElementById('simPct').textContent = Math.floor(pct) + '%';
+  document.getElementById('simWork').textContent = fmtN(kmW, 1) + ' / ' + fmtN(kmWT, 1) + ' km';
+  document.getElementById('simArea').textContent = fmtN(kmW * 1000 * sw / 10000, 2) + ' / ' + fmtN(kmWT * 1000 * sw / 10000, 2) + ' ha';
+  document.getElementById('simTurn').textContent = fmtN(kmTurn, 1) + ' km';
+  document.getElementById('simTime').textContent = fmtH(sim.dist * k / 1000 / v) + ' / ' + fmtH(sim.total * k / 1000 / v) + ' h';
+  document.getElementById('simPlay').textContent = sim.playing ? '⏸ Pausar' : (done ? '▶ De novo' : (sim.dist > 0 ? '▶ Continuar' : '▶ Iniciar'));
+}
+
+function drawSim() {
+  const p = simPos();
+  const wPx = Math.max(2, sim.swathU * zoom);
+  // Faixa já aplicada
+  ctx.save();
+  ctx.lineCap = 'butt'; ctx.lineJoin = 'round';
+  ctx.strokeStyle = 'rgba(70, 200, 255, 0.38)';
+  ctx.lineWidth = wPx;
+  ctx.beginPath();
+  let open = false;
+  const segTo = (s, f) => {
+    const A = worldToScreen(s.a.x, s.a.y);
+    const B = worldToScreen(s.a.x + (s.b.x - s.a.x) * f, s.a.y + (s.b.y - s.a.y) * f);
+    if (!open) { ctx.moveTo(A.sx, A.sy); open = true; }
+    ctx.lineTo(B.sx, B.sy);
+  };
+  for (let j = 0; j <= p.i; j++) {
+    const s = sim.segs[j], f = j === p.i ? p.f : 1;
+    if (s.work) segTo(s, f); else open = false;
+  }
+  ctx.stroke();
+  // Manobras feitas (tracejado fino)
+  ctx.setLineDash([4, 4]); ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+  ctx.beginPath();
+  for (let j = 0; j <= p.i; j++) {
+    const s = sim.segs[j]; if (s.work) continue;
+    const f = j === p.i ? p.f : 1;
+    const A = worldToScreen(s.a.x, s.a.y), B = worldToScreen(s.a.x + (s.b.x - s.a.x) * f, s.a.y + (s.b.y - s.a.y) * f);
+    ctx.moveTo(A.sx, A.sy); ctx.lineTo(B.sx, B.sy);
+  }
+  ctx.stroke(); ctx.setLineDash([]);
+  // Trator + barra
+  const P = worldToScreen(p.x, p.y);
+  const hx = (p.s.b.x - p.s.a.x) / p.s.len, hy = -(p.s.b.y - p.s.a.y) / p.s.len; // direção na tela (y invertido)
+  const ang = Math.atan2(hy, hx);
+  ctx.translate(P.sx, P.sy); ctx.rotate(ang);
+  if (p.s.work) {
+    ctx.strokeStyle = '#F0A030'; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(-4, -wPx / 2); ctx.lineTo(-4, wPx / 2); ctx.stroke();
+  }
+  // Trator (vista de cima): rodas, corpo laranja e cabine
+  ctx.fillStyle = '#1A1A1A';
+  ctx.fillRect(-9, -10, 8, 4); ctx.fillRect(-9, 6, 8, 4);     // rodas traseiras
+  ctx.fillRect(6, -8, 5, 3); ctx.fillRect(6, 5, 5, 3);        // rodas dianteiras
+  ctx.fillStyle = '#F0A030'; ctx.strokeStyle = '#0B1810'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(-8, -6); ctx.lineTo(14, -4); ctx.lineTo(16, 0); ctx.lineTo(14, 4); ctx.lineTo(-8, 6); ctx.closePath();
+  ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#FFFFFF'; ctx.fillRect(-6, -4, 7, 8); ctx.strokeRect(-6, -4, 7, 8); // cabine
+  ctx.restore();
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ISO-XML EXPORT
+═══════════════════════════════════════════════════════════════ */
+function generateTaskdataXML() {
+  const fazenda = document.getElementById('fazenda').value.trim() || 'Fazenda';
+  const talhao = document.getElementById('talhao').value.trim() || 'Talhão 1';
+  const areaSqm = localPoly.length >= 3 ? Math.round(calcArea(localPoly)) : 0;
+
+  let xml = `<?xml version="1.0" encoding="UTF-8"?>\n`;
+  xml += `<ISO11783_TaskData VersionMajor="4" VersionMinor="2" `;
+  xml += `ManagementSoftwareManufacturer="JactoGPS" ManagementSoftwareVersion="2.0" `;
+  xml += `TaskDataDescription="${escXml(fazenda)}" `;
+  xml += `DataTransferOrigin="1">\n`;
+  xml += `  <CTR A="CTR1" B="${escXml(fazenda)}" />\n`;
+  xml += `  <FRM A="FRM1" B="Agricultura de Precisao" C="CTR1" />\n`;
+  xml += `  <PFD A="PFD0001" C="${escXml(talhao)}" D="${areaSqm}" E="CTR1" F="FRM1">\n`;
+
+  // External boundary
+  xml += `    <PLN A="1">\n`;
+  xml += `      <LSG A="1">\n`;
+  points.forEach(p => {
+    xml += `        <PNT A="1" C="${p.lat.toFixed(7)}" D="${p.lon.toFixed(7)}" />\n`;
+  });
+  if (points.length > 0) {
+    xml += `        <PNT A="1" C="${points[0].lat.toFixed(7)}" D="${points[0].lon.toFixed(7)}" />\n`;
+  }
+  xml += `      </LSG>\n`;
+  xml += `    </PLN>\n`;
+
+  // Headland boundaries
+  headlandPolys.forEach((hp, idx) => {
+    xml += `    <PLN A="2">\n`;
+    xml += `      <LSG A="2">\n`;
+    hp.forEach(p => {
+      const ll = toLatLon(p.x, p.y);
+      xml += `        <PNT A="1" C="${ll.lat.toFixed(7)}" D="${ll.lon.toFixed(7)}" />\n`;
+    });
+    if (hp.length > 0) {
+      const ll0 = toLatLon(hp[0].x, hp[0].y);
+      xml += `        <PNT A="1" C="${ll0.lat.toFixed(7)}" D="${ll0.lon.toFixed(7)}" />\n`;
+    }
+    xml += `      </LSG>\n`;
+    xml += `    </PLN>\n`;
+  });
+
+  // Guidance pattern (AB line)
+  if (localPoly.length >= 2) {
+    const pA = localPoly[0], pB = localPoly[1];
+    const llA = toLatLon(pA.x, pA.y), llB = toLatLon(pB.x, pB.y);
+    xml += `    <GPN A="GPN1" B="Linha AB ${abAngle}graus" C="1">\n`;
+    xml += `      <LSG A="1">\n`;
+    xml += `        <PNT A="1" C="${llA.lat.toFixed(7)}" D="${llA.lon.toFixed(7)}" />\n`;
+    xml += `        <PNT A="1" C="${llB.lat.toFixed(7)}" D="${llB.lon.toFixed(7)}" />\n`;
+    xml += `      </LSG>\n`;
+    xml += `    </GPN>\n`;
+  }
+
+  xml += `  </PFD>\n`;
+
+  // Task definition for the Star 2014
+  xml += `  <TSK A="TSK1" B="${escXml(talhao + ' - Fumigacao')}" C="CTR1" D="FRM1" E="WKR1" G="1">\n`;
+  xml += `    <TZN A="TZN1">\n`;
+  xml += `      <PLN A="1">\n`;
+  xml += `        <LSG A="1">\n`;
+  points.forEach(p => {
+    xml += `          <PNT A="1" C="${p.lat.toFixed(7)}" D="${p.lon.toFixed(7)}" />\n`;
+  });
+  if (points.length > 0) {
+    xml += `          <PNT A="1" C="${points[0].lat.toFixed(7)}" D="${points[0].lon.toFixed(7)}" />\n`;
+  }
+  xml += `        </LSG>\n`;
+  xml += `      </PLN>\n`;
+  xml += `    </TZN>\n`;
+  xml += `  </TSK>\n`;
+
+  xml += `  <WKR A="WKR1" B="${escXml(document.getElementById('operador').value || 'Operador')}" />\n`;
+  xml += `</ISO11783_TaskData>`;
+
+  return xml;
+}
+
+function escXml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function exportTaskdata() {
+  if (points.length < 3) {
+    showToast('Adicione pelo menos 3 vértices antes de exportar', true);
+    return;
+  }
+  const xml = generateTaskdataXML();
+  const talhao = document.getElementById('talhao').value.replace(/\s+/g, '_');
+  const readme = `JACTO GPS - TASKDATA ISO 11783\n${'='.repeat(40)}\n\n` +
+    `Talhão  : ${document.getElementById('talhao').value}\n` +
+    `Fazenda : ${document.getElementById('fazenda').value}\n` +
+    `Faixa   : ${swathWidth} m\n` +
+    `Vel.    : ${workSpeed} km/h\n` +
+    `Ângulo  : ${abAngle}°\n` +
+    `Cabec.  : ${headlandPasses} passada(s)\n\n` +
+    `Gerado em: ${new Date().toLocaleString('pt-BR')}\n\n` +
+    `INSTRUÇÕES:\n` +
+    `1. Extraia a pasta TASKDATA para um pen drive FAT32\n` +
+    `2. Insira o pen drive no terminal Jacto Star 2014\n` +
+    `3. Selecione o talhão no menu de tarefas\n`;
+  const zipBytes = createZip([
+    { name: 'TASKDATA/TASKDATA.XML', content: xml },
+    { name: 'TASKDATA/LEIAME.TXT',   content: readme }
+  ]);
+  const blob = new Blob([zipBytes], { type: 'application/zip' });
+  triggerDownload(blob, `TASKDATA_${talhao}.zip`);
+  showToast('TASKDATA.ZIP gerado! Confirme o download e copie para o pen drive.');
+}
+function exportCSV() {
+  if (!points.length) { showToast('Nenhum vértice para exportar', true); return; }
+  let csv = 'Vertice,Latitude,Longitude\n';
+  points.forEach((p, i) => {
+    csv += `${i + 1},${p.lat.toFixed(7)},${p.lon.toFixed(7)}\n`;
+  });
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const talhao = document.getElementById('talhao').value.replace(/\s+/g, '_');
+  triggerDownload(blob, `vertices_${talhao}.csv`);
+  showToast('CSV exportado');
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   .JACTO PROJECT FILE
+═══════════════════════════════════════════════════════════════ */
+// Mapa de fundo salvo junto do projeto (JPEG, até ~4000 px) para reabrir alinhado com os lotes
+function mapSnapshot() {
+  if (!mapBg || !mapBgWorld) return null;
+  try {
+    const maxSide = 4000;
+    const w0 = mapBg.naturalWidth || mapBg.width, h0 = mapBg.naturalHeight || mapBg.height;
+    const k = Math.min(1, maxSide / Math.max(w0, h0));
+    const c = document.createElement('canvas');
+    c.width = Math.round(w0 * k); c.height = Math.round(h0 * k);
+    c.getContext('2d').drawImage(mapBg, 0, 0, c.width, c.height);
+    return { src: c.toDataURL('image/jpeg', 0.85), world: mapBgWorld, visible: mapBgVisible };
+  } catch (err) { return null; }
+}
+
+function restoreMap(m) {
+  if (!m || !m.src || !m.world) return;
+  const img = new Image();
+  img.onload = () => {
+    mapBg = img; mapBgWorld = m.world; mapBgVisible = m.visible !== false;
+    document.getElementById('btnClearMap').hidden = false;
+    document.getElementById('btnRefitMap').hidden = false;
+    document.getElementById('btnToggleMap').hidden = false;
+    document.getElementById('btnToggleMap').textContent = mapBgVisible ? '👁' : '🚫';
+    draw();
+  };
+  img.src = m.src;
+}
+
+function saveJactoFile() {
+  const data = {
+    version: 2,
+    activeLot: document.getElementById('talhao').value,
+    fazenda: document.getElementById('fazenda').value,
+    operador: document.getElementById('operador').value,
+    swathWidth, workSpeed, abAngle, headlandPasses,
+    points,
+    lots, metersPerUnit, stoneMarkers, windrowLines,
+    view: { zoom, panX, panY },
+    map: mapSnapshot(),
+    createdAt: new Date().toISOString()
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const name = (data.activeLot || 'talhao').replace(/\s+/g, '_');
+  triggerDownload(blob, `${name}.jacto`);
+  showToast('Projeto salvo (.jacto)');
+}
+
+/* ── Salvar lotes separados ──────────────────────────────────── */
+function lotPerimM(lot) {
+  const k = unitScale();
+  if (!k || lot.pts.length < 3) return null;
+  return calcPerimeter(lot.pts) * k;
+}
+
+function safeFileName(name) {
+  return (name || 'lote').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^_+|_+$/g, '') || 'lote';
+}
+
+// Projeto .jacto contendo só um lote (com mapa, escala e vista centrada nele)
+function lotProjectData(lot, map) {
+  const hasGPS = refLat !== 0 || refLon !== 0;
+  const k = unitScale();
+  let view = { zoom, panX, panY };
+  if (lot.pts.length) {
+    const W = canvas.clientWidth || 800, H = canvas.clientHeight || 500;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    lot.pts.forEach(p => { minX = Math.min(minX, p.x); minY = Math.min(minY, p.y); maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y); });
+    const w = Math.max(maxX - minX, 1e-6), h = Math.max(maxY - minY, 1e-6);
+    view = { zoom: Math.min((W - 100) / w, (H - 100) / h) * 0.9, panX: (minX + maxX) / 2, panY: (minY + maxY) / 2 };
+  }
+  const ha = lot.areaHaOverride !== null ? lot.areaHaOverride : lotAreaHa(lot.pts);
+  const perim = lotPerimM(lot);
+  return {
+    version: 2,
+    activeLot: lot.name,
+    fazenda: document.getElementById('fazenda').value,
+    operador: document.getElementById('operador').value,
+    swathWidth, workSpeed, abAngle, headlandPasses,
+    points: hasGPS ? points : [],
+    lots: [{ pts: lot.pts, name: lot.name, areaHaOverride: lot.areaHaOverride }],
+    metersPerUnit: hasGPS ? metersPerUnit : k,   // guarda a escala usada, mesmo se veio da área exata de outro lote
+    stoneMarkers: [], windrowLines: [],
+    view, map,
+    resumo: { lote: lot.name, area_ha: ha !== null ? +ha.toFixed(2) : null, perimetro_m: perim !== null ? Math.round(perim) : null, vertices: lot.pts.length },
+    createdAt: new Date().toISOString()
+  };
+}
+
+function saveLotFile(i) {
+  const lot = lots[i];
+  if (!lot) return;
+  const data = lotProjectData(lot, mapSnapshot());
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  triggerDownload(blob, safeFileName(lot.name) + '.jacto');
+  showToast('"' + lot.name + '" salvo (.jacto)');
+}
+
+function saveAllLotsZip() {
+  if (!lots.length) { showToast('Nenhum lote para salvar', true); return; }
+  const map = mapSnapshot();
+  const used = {};
+  const files = [];
+  let csv = 'Lote;Area (ha);Perimetro (m);Vertices\n';
+  lots.forEach(lot => {
+    let base = safeFileName(lot.name);
+    if (used[base]) { used[base]++; base += '_' + used[base]; } else used[base] = 1;
+    const data = lotProjectData(lot, map);
+    files.push({ name: base + '.jacto', content: JSON.stringify(data, null, 2) });
+    const r = data.resumo;
+    csv += [lot.name.replace(/;/g, ','), r.area_ha !== null ? String(r.area_ha).replace('.', ',') : '', r.perimetro_m !== null ? r.perimetro_m : '', r.vertices].join(';') + '\n';
+  });
+  files.push({ name: 'resumo_lotes.csv', content: '\ufeff' + csv });
+  const fazenda = safeFileName(document.getElementById('fazenda').value || 'fazenda');
+  triggerDownload(new Blob([createZip(files)], { type: 'application/zip' }), 'lotes_' + fazenda + '.zip');
+  showToast(lots.length + ' lote(s) salvos separados em .zip');
+}
+
+function loadJactoFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const data = JSON.parse(ev.target.result);
+      if (data.points && Array.isArray(data.points)) {
+        points = data.points;
+        lots = Array.isArray(data.lots) ? data.lots.map(l => ({ pts: l.pts || [], name: l.name || 'Lote', areaHaOverride: l.areaHaOverride ?? null })) : [];
+        metersPerUnit = data.metersPerUnit || null;
+        stoneMarkers = Array.isArray(data.stoneMarkers) ? data.stoneMarkers : [];
+        windrowLines = Array.isArray(data.windrowLines) ? data.windrowLines : [];
+        document.getElementById('btnClearObst').style.display = (stoneMarkers.length || windrowLines.length) ? '' : 'none';
+        if (data.map) restoreMap(data.map); else if ('map' in data) clearMap(); // arquivos antigos (sem mapa) mantêm o mapa atual
+        if (data.fazenda) document.getElementById('fazenda').value = data.fazenda;
+        if (data.activeLot) document.getElementById('talhao').value = data.activeLot;
+        if (data.operador) document.getElementById('operador').value = data.operador;
+        if (data.swathWidth) { document.getElementById('swathWidth').value = data.swathWidth; }
+        if (data.workSpeed) { document.getElementById('workSpeed').value = data.workSpeed; }
+        if (data.abAngle !== undefined) { document.getElementById('abAngle').value = data.abAngle; }
+        if (data.headlandPasses !== undefined) { document.getElementById('headlandPasses').value = data.headlandPasses; }
+        updateParams();
+        renderPoints();
+        scheduleRender();
+        renderLotsList();
+        if (data.view && !points.length) {
+          setTimeout(() => { zoom = data.view.zoom || 1; panX = data.view.panX || 0; panY = data.view.panY || 0; draw(); }, 100);
+        } else {
+          setTimeout(fitView, 100);
+        }
+        showToast(`Projeto "${data.activeLot || file.name}" carregado`);
+      } else {
+        showToast('Arquivo .jacto inválido', true);
+      }
+    } catch {
+      showToast('Erro ao ler arquivo', true);
+    }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   DOWNLOADS CAPABILITY
+═══════════════════════════════════════════════════════════════ */
+// ── DOWNLOAD: works both inside claude.ai artifact and as standalone PWA ─────
+let dlCapability = null;
+
+async function initDownloads() {
+  if (window.claude) {
+    try { dlCapability = await claude.use('downloads'); } catch {}
+  }
+}
+initDownloads();
+
+async function triggerDownload(blob, filename) {
+  // Try artifact downloads capability (inside claude.ai viewer)
+  if (!dlCapability && window.claude) {
+    try { dlCapability = await claude.use('downloads'); } catch {}
+  }
+  if (dlCapability) {
+    try {
+      await dlCapability.save({ filename, data: blob });
+      return;
+    } catch (e) {
+      const code = e?.code;
+      if (code === 'declined') { showToast('Download cancelado'); return; }
+      if (code === 'rate_limited') { showToast('Aguarde um momento antes de baixar novamente', true); return; }
+      // 'not_granted' or other → fall through to native download
+    }
+  }
+  // Native PWA / desktop browser fallback
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename; a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 2000);
+}
+
+/* ── MAP BACKGROUND ─────────────────────────────────────────────── */
+async function loadMapFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (file.name.toLowerCase().endsWith('.pdf')) {
+    if (window.pywebview && window.pywebview.api) {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64 = reader.result.split(',')[1];
+        try {
+          const result = await window.pywebview.api.convert_pdf_to_image(base64);
+          if (result.success) {
+            const img = new Image();
+            img.onload = () => {
+              mapBg = img; mapBgVisible = true; captureMapBgWorld();
+              document.getElementById('btnClearMap').hidden = false;
+              document.getElementById('btnRefitMap').hidden = false;
+              document.getElementById('btnToggleMap').hidden = false;
+              document.getElementById('btnToggleMap').textContent = '👁';
+              draw();
+            };
+            img.src = 'data:image/png;base64,' + result.image;
+          } else { showToast('Erro ao converter PDF: ' + result.error, true); }
+        } catch(err) { showToast('Erro ao converter PDF', true); }
+      };
+      reader.readAsDataURL(file);
+    } else {
+      // PDF.js — funciona no browser/PWA, sem necessidade de app desktop
+      if (typeof pdfjsLib === 'undefined') {
+        showToast('PDF.js não carregou. Verifique conexão e tente novamente.', true);
+        return;
+      }
+      showToast('Carregando PDF…');
+      (async () => {
+        try {
+          const arrayBuffer = await file.arrayBuffer();
+          const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
+          const page = await pdf.getPage(1);
+          const viewport = page.getViewport({ scale: 2.0 });
+          const offscreen = document.createElement('canvas');
+          offscreen.width = viewport.width;
+          offscreen.height = viewport.height;
+          await page.render({ canvasContext: offscreen.getContext('2d'), viewport }).promise;
+          const img = new Image();
+          img.onload = () => {
+            mapBg = img; mapBgVisible = true; captureMapBgWorld();
+            document.getElementById('btnClearMap').hidden = false;
+            document.getElementById('btnRefitMap').hidden = false;
+            document.getElementById('btnToggleMap').hidden = false;
+            document.getElementById('btnToggleMap').textContent = '👁';
+            draw();
+            const info = pdf.numPages > 1 ? ` (${pdf.numPages} páginas — usando pág. 1)` : '';
+            showToast('Mapa PDF carregado' + info);
+          };
+          img.src = offscreen.toDataURL('image/png');
+        } catch (err) {
+          showToast('Erro ao abrir PDF: ' + (err.message || String(err)), true);
+        }
+      })();
+    }
+  } else {
+    const nativeImg = ['image/jpeg','image/png','image/gif','image/webp','image/bmp','image/svg+xml'];
+    const applyImg = (src) => {
+      const img = new Image();
+      img.onload = () => {
+        mapBg = img; mapBgVisible = true; captureMapBgWorld();
+        document.getElementById('btnClearMap').hidden = false;
+        document.getElementById('btnRefitMap').hidden = false;
+        document.getElementById('btnToggleMap').hidden = false;
+        document.getElementById('btnToggleMap').textContent = '👁';
+        draw();
+      };
+      img.src = src;
+    };
+    if (nativeImg.includes(file.type)) {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        mapBg = img; mapBgVisible = true; captureMapBgWorld();
+        document.getElementById('btnClearMap').hidden = false;
+        document.getElementById('btnRefitMap').hidden = false;
+        document.getElementById('btnToggleMap').hidden = false;
+        document.getElementById('btnToggleMap').textContent = '👁';
+        draw(); URL.revokeObjectURL(url);
+      };
+      img.onerror = () => { showToast('Erro ao carregar imagem', true); URL.revokeObjectURL(url); };
+      img.src = url;
+    } else if (window.pywebview && window.pywebview.api) {
+      // Desktop app — Python converts TIFF/BMP/etc
+      const reader2 = new FileReader();
+      reader2.onload = async () => {
+        const b64 = reader2.result.split(',')[1];
+        showToast('Convertendo arquivo...');
+        try {
+          const res = await window.pywebview.api.convert_file_to_image(b64, file.name);
+          if (res.success) { applyImg('data:image/png;base64,' + res.image); showToast('Mapa carregado'); }
+          else { showToast('Erro ao converter: ' + res.error, true); }
+        } catch(err) { showToast('Erro ao converter arquivo', true); }
+      };
+      reader2.readAsDataURL(file);
+    } else {
+      // Browser fallback — try anyway, show helpful error
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        mapBg = img; mapBgVisible = true; captureMapBgWorld();
+        document.getElementById('btnClearMap').hidden = false;
+        document.getElementById('btnRefitMap').hidden = false;
+        document.getElementById('btnToggleMap').hidden = false;
+        document.getElementById('btnToggleMap').textContent = '👁';
+        draw(); URL.revokeObjectURL(url);
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        showToast('Formato não suportado no navegador. Use o app desktop para TIFF e outros formatos.', true);
+      };
+      img.src = url;
+    }
+  }
+  e.target.value = '';
+}
+
+function clearMap() {
+  mapBg = null; mapBgWorld = null;
+  document.getElementById('btnClearMap').hidden = true;
+  document.getElementById('btnToggleMap').hidden = true;
+  document.getElementById('btnRefitMap').hidden = true;
+  draw();
+}
+
+function refitMap() {
+  if (!mapBg) return;
+  captureMapBgWorld();
+  draw();
+  showToast('Mapa encaixado à vista atual');
+}
+
+function toggleMap() {
+  mapBgVisible = !mapBgVisible;
+  document.getElementById('btnToggleMap').textContent = mapBgVisible ? '👁' : '🚫';
+  draw();
+}
+
+/* ── LOT DRAWING FUNCTIONS ────────────────────────────────────── */
+function exitObstModes() {
+  if (drawObstMode === 'none') return;
+  drawObstMode = 'none'; windrowPts = [];
+  ['btnStoneMode', 'btnWindrowMode'].forEach(id => {
+    const b = document.getElementById(id);
+    if (b) { b.style.background = ''; b.style.color = ''; }
+  });
+}
+
+function toggleDrawMode() {
+  exitObstModes();
+  drawMode = drawMode === 'draw' ? 'none' : 'draw';
+  if (drawMode === 'draw') drawPts = [];
+  hoveredVtx = null; dragInfo = null;
+  updateDrawUI(); draw();
+}
+
+function toggleEditMode() {
+  exitObstModes();
+  selVtx = null;
+  drawMode = drawMode === 'edit' ? 'none' : 'edit';
+  drawPts = []; hoveredVtx = null; dragInfo = null;
+  updateDrawUI(); draw();
+}
+
+/* ── Desfazer / apagar ──────────────────────────────────────── */
+function undoDrawPoint() {
+  if (drawMode !== 'draw' || !drawPts.length) return;
+  drawPts.pop();
+  draw();
+}
+
+function cancelDrawing() {
+  if (drawPts.length >= 2 && !confirm('Cancelar o lote em desenho? Os pontos marcados serão apagados.')) return;
+  drawPts = []; drawMode = 'none';
+  updateDrawUI(); draw();
+}
+
+function afterLotsChanged() {
+  recomputeLotLines(); renderLotsList(); draw();
+  if (sim) rebuildSim();
+}
+
+function deleteSelectedVertex() {
+  if (!selVtx || !lots[selVtx.lotIdx]) return;
+  const lot = lots[selVtx.lotIdx];
+  if (lot.pts.length <= 3) {
+    showToast('O lote precisa de pelo menos 3 pontos — use 🗑 Apagar lote', true);
+    return;
+  }
+  lot.pts.splice(selVtx.vtxIdx, 1);
+  selVtx = null; hoveredVtx = null;
+  afterLotsChanged();
+  showToast('Ponto apagado');
+}
+
+function deleteSelectedLot() {
+  if (!selVtx || !lots[selVtx.lotIdx]) return;
+  const name = lots[selVtx.lotIdx].name;
+  if (!confirm('Apagar "' + name + '"?')) return;
+  lots.splice(selVtx.lotIdx, 1);
+  selVtx = null; hoveredVtx = null; dragInfo = null;
+  afterLotsChanged();
+  showToast('"' + name + '" apagado');
+}
+
+function updateDrawBar() {
+  const bar = document.getElementById('drawBar');
+  if (!bar) return;
+  const drawing = drawMode === 'draw';
+  const editing = drawMode === 'edit' && selVtx && lots[selVtx.lotIdx];
+  bar.hidden = !(drawing || editing);
+  document.getElementById('drawBarDraw').hidden = !drawing;
+  document.getElementById('drawBarEdit').hidden = !editing;
+  if (drawing) {
+    document.getElementById('btnUndoPt').disabled = drawPts.length === 0;
+    document.getElementById('btnFinishLot').disabled = drawPts.length < 3;
+  }
+  if (editing) {
+    const lot = lots[selVtx.lotIdx];
+    document.getElementById('drawBarInfo').textContent = lot.name + ' · ponto ' + (selVtx.vtxIdx + 1);
+  }
+}
+
+document.addEventListener('keydown', e => {
+  const t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+  if (drawMode === 'draw') {
+    if (e.key === 'Backspace' || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z')) { e.preventDefault(); undoDrawPoint(); }
+    else if (e.key === 'Escape') { cancelDrawing(); }
+    else if (e.key === 'Enter') { if (drawPts.length >= 3) finishDrawing(); }
+  } else if (drawMode === 'edit' && selVtx) {
+    if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSelectedVertex(); }
+    else if (e.key === 'Escape') { selVtx = null; draw(); }
+  }
+});
+
+function updateDrawUI() {
+  const btnD = document.getElementById('btnDrawMode');
+  const btnE = document.getElementById('btnEditMode');
+  if (btnD) {
+    btnD.style.background = drawMode === 'draw' ? 'var(--amber)' : '';
+    btnD.style.color = drawMode === 'draw' ? '#0B1810' : '';
+    btnD.style.borderColor = drawMode === 'draw' ? 'var(--amber)' : '';
+  }
+  const btnS = document.getElementById('btnScaleMode');
+  if (btnS) {
+    btnS.style.background = drawMode === 'scale' ? '#F0D020' : '';
+    btnS.style.color = drawMode === 'scale' ? '#0B1810' : '';
+    btnS.style.borderColor = drawMode === 'scale' ? '#F0D020' : '';
+  }
+  if (btnE) {
+    btnE.style.background = drawMode === 'edit' ? 'var(--accentd)' : '';
+    btnE.style.color = drawMode === 'edit' ? '#fff' : '';
+    btnE.style.borderColor = drawMode === 'edit' ? 'var(--accentd)' : '';
+  }
+  canvas.style.cursor = panMode ? 'grab' : ((drawMode === 'draw' || drawMode === 'scale') ? 'crosshair' : 'default');
+}
+
+function finishDrawing() {
+  if (drawPts.length < 3) { showToast('Adicione pelo menos 3 pontos', true); return; }
+  const name = 'Lote ' + (lots.length + 1);
+  lots.push({ pts: drawPts.slice(), name, areaHaOverride: null });
+  recomputeLotLines();
+  drawPts = [];
+  const btn = document.getElementById('btnShowLots');
+  if (btn) btn.style.display = '';
+  renderLotsList();
+  const ha = lotAreaHa(lots[lots.length - 1].pts);
+  switchTab('lots');
+  if (ha) {
+    showToast(name + ' desenhado! Área: ' + ha.toFixed(2) + ' ha');
+    draw();
+  } else {
+    // Sem GPS e sem escala: pede a escala para poder calcular a área
+    drawMode = 'scale'; scalePts = []; updateDrawUI(); draw();
+    showToast(name + ' desenhado! Para área, perímetro e linhas: clique 2 pontos de distância conhecida (📏) ou digite a área exata na aba Lotes');
+  }
+}
+
+function unitScale() {
+  // GPS presente: unidades do canvas já são metros
+  if (refLat !== 0 || refLon !== 0) return 1;
+  if (metersPerUnit) return metersPerUnit;
+  // Sem escala 📏: deduz a escala a partir da área exata digitada em algum lote
+  for (const lot of lots) {
+    if (lot.areaHaOverride > 0 && lot.pts.length >= 3) {
+      let a = 0;
+      for (let i = 0, j = lot.pts.length - 1; i < lot.pts.length; j = i++) a += lot.pts[j].x * lot.pts[i].y - lot.pts[i].x * lot.pts[j].y;
+      a = Math.abs(a) / 2;
+      if (a > 0) return Math.sqrt(lot.areaHaOverride * 10000 / a);
+    }
+  }
+  return null;
+}
+
+function lotAreaHa(pts) {
+  if (pts.length < 3) return null;
+  const k = unitScale();
+  if (!k) return null;
+  let a = 0;
+  for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+    a += (pts[j].x * pts[i].y) - (pts[i].x * pts[j].y);
+  }
+  return Math.abs(a) / 2 * k * k / 10000;
+}
+
+function toggleScaleMode() {
+  exitObstModes();
+  drawMode = drawMode === 'scale' ? 'none' : 'scale';
+  scalePts = []; drawPts = []; hoveredVtx = null; dragInfo = null;
+  updateDrawUI(); draw();
+  if (drawMode === 'scale') showToast('📏 Clique em 2 pontos com distância conhecida (ex: barra de escala do mapa ou um lado medido)');
+}
+
+function addScalePoint(w) {
+  if (scalePts.length === 1) {
+    const a = worldToScreen(scalePts[0].x, scalePts[0].y), b = worldToScreen(w.x, w.y);
+    if (Math.hypot(a.sx - b.sx, a.sy - b.sy) < 5) return; // ignora clique duplicado
+  }
+  scalePts.push(w);
+  draw();
+  if (scalePts.length < 2) return;
+  const du = Math.hypot(scalePts[1].x - scalePts[0].x, scalePts[1].y - scalePts[0].y);
+  const resp = prompt('Distância real entre os 2 pontos, em metros:', '');
+  const m = resp === null ? NaN : parseFloat(String(resp).replace(',', '.'));
+  scalePts = [];
+  drawMode = 'none'; updateDrawUI();
+  if (!(m > 0) || !(du > 0)) { showToast('Escala não definida', true); draw(); return; }
+  metersPerUnit = m / du;
+  recomputeLotLines(); renderLotsList(); draw();
+  const tot = lots.reduce((s, l) => s + (l.areaHaOverride !== null ? l.areaHaOverride : (lotAreaHa(l.pts) || 0)), 0);
+  showToast('Escala definida' + (lots.length ? ' · Área total: ' + tot.toFixed(2) + ' ha' : ''));
+}
+
+function renderLotsList() {
+  const el = document.getElementById('lotsListEl');
+  const tabEl = document.getElementById('lotsTabList');
+  const btn = document.getElementById('btnShowLots');
+  const tabBtn = document.getElementById('tab-lots');
+  if (btn) btn.style.display = lots.length ? '' : 'none';
+
+  // Update lots tab badge/indicator
+  if (tabBtn) {
+    tabBtn.style.color = lots.length ? 'var(--accent)' : '';
+  }
+
+  // Update tab header totals
+  const totalHa = lots.reduce(function(sum, lot) {
+    return sum + (lot.areaHaOverride !== null ? lot.areaHaOverride : (lotAreaHa(lot.pts) || 0));
+  }, 0);
+  const countEl = document.getElementById('lotsTabCount');
+  const totalEl = document.getElementById('lotsTabTotal');
+  if (countEl) countEl.textContent = lots.length;
+  if (totalEl) totalEl.textContent = lots.length ? totalHa.toFixed(2) + ' ha' : '— ha';
+  // Sem talhão GPS: painel de dados mostra a soma dos lotes desenhados
+  if (localPoly.length < 3) updateLotStats();
+
+  if (!lots.length) {
+    const emptyHtml = '<div style="color:var(--text3);font-size:12px;padding:12px 0;text-align:center">Nenhum lote desenhado ainda.<br><span style="font-size:11px">Use ✏️ Desenhar no mapa</span></div>';
+    if (el) el.innerHTML = emptyHtml;
+    if (tabEl) tabEl.innerHTML = emptyHtml;
+    return;
+  }
+
+  const html = lots.map(function(lot, i) {
+    const calcHa = lotAreaHa(lot.pts);
+    const ha = lot.areaHaOverride !== null ? lot.areaHaOverride : (calcHa || 0);
+    const color = LOT_COLORS[i % LOT_COLORS.length];
+    return '<div style="background:var(--surf2);border:1px solid var(--border);border-left:3px solid ' + color + ';border-radius:6px;padding:9px 10px">'
+      // Nome + delete
+      + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">'
+      + '<div style="width:10px;height:10px;border-radius:50%;background:' + color + ';flex-shrink:0"></div>'
+      + '<input type="text" value="' + lot.name + '" onchange="lots[' + i + '].name=this.value;draw()" style="flex:1;background:var(--surf);border:1px solid var(--border2);border-radius:4px;padding:3px 6px;color:var(--text);font-size:12px;font-weight:600">'
+      + '<button onclick="removeLot(' + i + ')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:16px;line-height:1;padding:0 2px">×</button>'
+      + '</div>'
+      // Área calculada (leitura)
+      + '<div style="display:flex;gap:4px;align-items:center;margin-bottom:6px">'
+      + '<span style="font-size:11px;color:var(--amber);min-width:90px">📐 Calculada:</span>'
+      + '<span style="font-size:12px;color:var(--text2);font-variant-numeric:tabular-nums">' + (calcHa ? calcHa.toFixed(2) + ' ha' : '<em style="color:var(--text3)">defina 📏 Escala</em>') + '</span>'
+      + '</div>'
+      // Área exata (editável)
+      + '<div style="display:flex;gap:6px;align-items:center">'
+      + '<span style="font-size:11px;color:var(--accent);min-width:90px">✏️ Exata:</span>'
+      + '<input type="number" value="' + ha.toFixed(2) + '" step="0.01" min="0" onchange="setLotHa(' + i + ',this.value)" style="width:80px;padding:4px 7px;background:var(--surf);border:1px solid var(--accent);border-radius:4px;color:var(--text);font-size:13px;font-weight:600;font-variant-numeric:tabular-nums" title="Digite a área exata do lote em hectares">'
+      + '<span style="font-size:12px;color:var(--text2)">ha</span>'
+      + (lot.areaHaOverride !== null ? '<span style="font-size:10px;color:var(--accent);margin-left:2px" title="Área manual ativa">●</span>' : '')
+      + '</div>'
+      // Perímetro + salvar só este lote
+      + '<div style="display:flex;gap:6px;align-items:center;margin-top:6px">'
+      + '<span style="font-size:11px;color:var(--text2);min-width:90px">📏 Perímetro:</span>'
+      + '<span style="font-size:12px;color:var(--text2);font-variant-numeric:tabular-nums">' + (lotPerimM(lot) !== null ? Math.round(lotPerimM(lot)).toLocaleString('pt-BR') + ' m' : '—') + '</span>'
+      + '<button class="btn btn-ghost btn-sm" onclick="saveLotFile(' + i + ')" style="margin-left:auto;padding:3px 8px" title="Salvar só este lote em um arquivo .jacto">💾 Salvar</button>'
+      + '</div>'
+      + '</div>';
+  }).join('');
+
+  if (el) el.innerHTML = html;
+  if (tabEl) tabEl.innerHTML = html;
+}
+
+function removeLot(i) { lots.splice(i, 1); selVtx = null; hoveredVtx = null; afterLotsChanged(); }
+
+function setLotHa(i, val) {
+  const v = parseFloat(val);
+  lots[i].areaHaOverride = isNaN(v) ? null : v;
+  // redesenha a lista depois que o campo terminar de perder o foco (evita erro ao trocar o HTML)
+  setTimeout(() => { recomputeLotLines(); renderLotsList(); draw(); if (sim) rebuildSim(); }, 0);
+}
+
+function useLotAsBoundary(i) {
+  if (!confirm('Usar "' + lots[i].name + '" como vértices GPS do talhão?')) return;
+  points = lots[i].pts.map(function(p) { return toLatLon(p.x, p.y); });
+  renderPoints(); scheduleRender(); fitView();
+  showToast('"' + lots[i].name + '" definido como talhão principal');
+}
+
+function clearLots() {
+  if (lots.length && !confirm('Remover todos os lotes?')) return;
+  lots = []; drawPts = []; drawMode = 'none'; selVtx = null; hoveredVtx = null;
+  updateDrawUI(); afterLotsChanged();
+}
+
+function toggleStoneMode() {
+  if (drawObstMode === 'stone') {
+    drawObstMode = 'none';
+    document.getElementById('btnStoneMode').style.background = '';
+    document.getElementById('btnStoneMode').style.color = '';
+    canvas.style.cursor = 'default';
+  } else {
+    drawObstMode = 'stone'; drawMode = 'none'; windrowPts = []; drawPts = []; scalePts = []; updateDrawUI();
+    document.getElementById('btnStoneMode').style.background = 'var(--red)';
+    document.getElementById('btnStoneMode').style.color = '#fff';
+    document.getElementById('btnWindrowMode').style.background = '';
+    document.getElementById('btnWindrowMode').style.color = '';
+    document.getElementById('btnDrawMode').style.background = '';
+    document.getElementById('btnDrawMode').style.color = '';
+    document.getElementById('btnEditMode').style.background = '';
+    document.getElementById('btnEditMode').style.color = '';
+    canvas.style.cursor = 'crosshair';
+    showToast('🪨 Clique no mapa para marcar bola de pedras');
+  }
+  draw();
+}
+
+function toggleWindrowMode() {
+  if (drawObstMode === 'windrow') {
+    drawObstMode = 'none'; windrowPts = [];
+    document.getElementById('btnWindrowMode').style.background = '';
+    document.getElementById('btnWindrowMode').style.color = '';
+    canvas.style.cursor = 'default';
+  } else {
+    drawObstMode = 'windrow'; drawMode = 'none'; windrowPts = []; drawPts = []; scalePts = []; updateDrawUI();
+    document.getElementById('btnWindrowMode').style.background = 'var(--amber)';
+    document.getElementById('btnWindrowMode').style.color = '#0B1810';
+    document.getElementById('btnStoneMode').style.background = '';
+    document.getElementById('btnStoneMode').style.color = '';
+    document.getElementById('btnDrawMode').style.background = '';
+    document.getElementById('btnDrawMode').style.color = '';
+    document.getElementById('btnEditMode').style.background = '';
+    document.getElementById('btnEditMode').style.color = '';
+    canvas.style.cursor = 'crosshair';
+    showToast('〰️ Clique para pontos · Duplo-clique para fechar o cordão');
+  }
+  draw();
+}
+
+function clearObstacles() {
+  if (!stoneMarkers.length && !windrowLines.length) return;
+  if (!confirm('Apagar todos os marcadores de pedras e cordões?')) return;
+  stoneMarkers = []; windrowLines = []; windrowPts = [];
+  drawObstMode = 'none';
+  document.getElementById('btnStoneMode').style.background = '';
+  document.getElementById('btnStoneMode').style.color = '';
+  document.getElementById('btnWindrowMode').style.background = '';
+  document.getElementById('btnWindrowMode').style.color = '';
+  document.getElementById('btnClearObst').style.display = 'none';
+  canvas.style.cursor = 'default';
+  draw();
+}
+
+function toggleLotsPanel() {
+  // Prefer the Lotes tab; fall back to floating panel on very small screens
+  switchTab('lots');
+  renderLotsList();
+}
+
+function switchTab(name) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  document.getElementById('panel-' + name).classList.add('active');
+  if (name === 'lots') renderLotsList();
+}
+
+let toastTimer = null;
+function showToast(msg, err = false) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'show' + (err ? ' error' : '');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.className = ''; }, err ? 4000 : 3000);
+}
+
+function toggleTheme() {
+  const root = document.documentElement;
+  const cur = root.getAttribute('data-theme');
+  root.setAttribute('data-theme', cur === 'dark' ? 'light' : 'dark');
+  draw();
+}
+
+function openHelp() {
+  document.getElementById('helpModal').hidden = false;
+}
+function closeHelp() {
+  document.getElementById('helpModal').hidden = true;
+}
+document.getElementById('helpModal').addEventListener('click', function(e) {
+  if (e.target === this) closeHelp();
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeHelp(); });
+
+/* ═══════════════════════════════════════════════════════════════
+   BOOT
+═══════════════════════════════════════════════════════════════ */
+// Load default demo points (rectangle, ~50ha field)
+function loadDemo() {
+  points = [
+    { lat: -17.7830, lon: -63.1820 },
+    { lat: -17.7830, lon: -63.1720 },
+    { lat: -17.7920, lon: -63.1720 },
+    { lat: -17.7920, lon: -63.1820 }
+  ];
+  renderPoints();
+  scheduleRender();
+  setTimeout(fitView, 150);
+}
+
+new ResizeObserver(resizeCanvas).observe(document.getElementById('canvasWrap'));
+window.addEventListener('resize', resizeCanvas);
+
+updateParams();
+// loadDemo() removido — inicia com tela limpa
+
+/* ═══════════════════════════════════════════════════════════════
+   CUSTOM ZIP WRITER — no external dependencies, STORED method
+═══════════════════════════════════════════════════════════════ */
+function makeCrc32Table() {
+  const t = new Uint32Array(256);
+  for (let i = 0; i < 256; i++) {
+    let c = i;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[i] = c;
+  }
+  return t;
+}
+const _crcTable = makeCrc32Table();
+
+function crc32(buf) {
+  let crc = 0xFFFFFFFF;
+  for (let i = 0; i < buf.length; i++) crc = _crcTable[(crc ^ buf[i]) & 0xFF] ^ (crc >>> 8);
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+function u16le(n) { return [n & 0xFF, (n >> 8) & 0xFF]; }
+function u32le(n) { return [n & 0xFF, (n >> 8) & 0xFF, (n >> 16) & 0xFF, (n >> 24) & 0xFF]; }
+
+function createZip(files) {
+  // files: [{name: string, content: string|Uint8Array}]
+  const enc = new TextEncoder();
+  const localParts = [];
+  const cdParts = [];
+  let offset = 0;
+
+  for (const f of files) {
+    const nameBytes = enc.encode(f.name);
+    const data = typeof f.content === 'string' ? enc.encode(f.content) : f.content;
+    const crc = crc32(data);
+    const size = data.length;
+    const nl = nameBytes.length;
+
+    // Local file header (30 bytes + filename)
+    const lf = new Uint8Array([
+      0x50,0x4B,0x03,0x04,  // signature
+      ...u16le(20),          // version needed
+      ...u16le(0),           // flags
+      ...u16le(0),           // compression: STORED
+      ...u16le(0),           // mod time
+      ...u16le(0),           // mod date
+      ...u32le(crc),         // CRC-32
+      ...u32le(size),        // compressed size
+      ...u32le(size),        // uncompressed size
+      ...u16le(nl),          // filename length
+      ...u16le(0),           // extra length
+      ...nameBytes
+    ]);
+    localParts.push(lf, data);
+
+    // Central directory entry (46 bytes + filename)
+    const cd = new Uint8Array([
+      0x50,0x4B,0x01,0x02,  // signature
+      ...u16le(20),          // version made by
+      ...u16le(20),          // version needed
+      ...u16le(0),           // flags
+      ...u16le(0),           // compression
+      ...u16le(0),           // mod time
+      ...u16le(0),           // mod date
+      ...u32le(crc),         // CRC-32
+      ...u32le(size),        // compressed size
+      ...u32le(size),        // uncompressed size
+      ...u16le(nl),          // filename length
+      ...u16le(0),           // extra length
+      ...u16le(0),           // comment length
+      ...u16le(0),           // disk start
+      ...u16le(0),           // internal attrs
+      ...u32le(0),           // external attrs
+      ...u32le(offset),      // local header offset
+      ...nameBytes
+    ]);
+    cdParts.push(cd);
+    offset += lf.length + size;
+  }
+
+  const cdOffset = offset;
+  const cdSize = cdParts.reduce((s, b) => s + b.length, 0);
+
+  // End of central directory record
+  const eocd = new Uint8Array([
+    0x50,0x4B,0x05,0x06,           // signature
+    ...u16le(0),                    // disk number
+    ...u16le(0),                    // disk with CD
+    ...u16le(files.length),         // entries on disk
+    ...u16le(files.length),         // total entries
+    ...u32le(cdSize),               // CD size
+    ...u32le(cdOffset),             // CD offset
+    ...u16le(0)                     // comment length
+  ]);
+
+  const all = [...localParts, ...cdParts, eocd];
+  const total = all.reduce((s, b) => s + b.length, 0);
+  const result = new Uint8Array(total);
+  let pos = 0;
+  for (const b of all) { result.set(b, pos); pos += b.length; }
+  return result;
+}
+
+/* ── SERVICE WORKER registration (offline PWA support) ─────────────── */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    const hadController = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then(reg => {
+      reg.update().catch(() => {});
+    }).catch(() => {
+      // SW not available (e.g. inside claude.ai iframe) — ignore
+    });
+    // Quando chega uma versão nova do app, recarrega uma vez para já usar ela
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController || reloaded) return;
+      reloaded = true;
+      location.reload();
+    });
+  });
+}
+</script>
+
+</body></html>
