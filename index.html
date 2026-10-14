@@ -873,7 +873,7 @@ canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block
       <div id="drawBar" hidden onclick="event.stopPropagation()" onmousedown="event.stopPropagation()" ontouchstart="event.stopPropagation()" ondblclick="event.stopPropagation()">
         <span id="drawBarDraw" class="draw-bar-group">
           <button class="btn btn-sm" id="btnUndoPt" onclick="undoDrawPoint()" title="Apagar o último ponto (Backspace ou Ctrl+Z)">↶ Desfazer ponto</button>
-          <button class="btn btn-sm db-ok" id="btnFinishLot" onclick="finishDrawing()" title="Fechar o lote (Enter)">✓ Fechar lote</button>
+          <button class="btn btn-sm db-ok" id="btnFinishLot" onclick="finishDrawing('botão ✓')" title="Fechar o lote (Enter)">✓ Fechar lote</button>
           <button class="btn btn-sm db-del" onclick="cancelDrawing()" title="Cancelar o lote em desenho (Esc)">✕ Cancelar</button>
         </span>
         <span id="drawBarEdit" class="draw-bar-group">
@@ -1927,8 +1927,8 @@ function draw() {
       ctx.beginPath(); ctx.arc(sx, sy, i === 0 ? 7 : 4, 0, Math.PI * 2);
       ctx.fill(); ctx.stroke();
     });
-    const hint = W < 600 ? `Toque nos cantos, na ordem · ✓ Fechar lote no fim (${drawPts.length} pts)`
-                         : `Clique nos cantos, na ordem, em volta do lote · a linha pontilhada mostra como vai fechar · Backspace desfaz · Duplo clique ou ✓ fecha (${drawPts.length} pts)`;
+    const hint = W < 600 ? `Toque nos cantos, na ordem · no fim: ✓ Fechar lote (${drawPts.length} pts)`
+                         : `Clique nos cantos, na ordem, em volta do lote · para fechar: clique no 1º ponto (branco) ou ✓ Fechar lote · Backspace desfaz (${drawPts.length} pts)`;
     ctx.font = '12px Inter, sans-serif';
     ctx.fillStyle = 'rgba(0,0,0,0.72)';
     ctx.fillRect(10, H - 36, ctx.measureText(hint).width + 16, 26);
@@ -2151,11 +2151,16 @@ wrap.addEventListener('mousedown', function(e) {
   if (drawMode === 'georef') { addGeorefPoint(screenToWorld(sx, sy)); return; }
   if (drawMode === 'draw') {
     if (e.detail >= 2 && Date.now() - lastFinishT < 800) return;   // 2º clique do duplo clique que fechou o lote
+    // duplo clique / toque duplo no mesmo lugar: não cria ponto repetido (e NÃO fecha o lote)
+    if (drawPts.length) {
+      const l = worldToScreen(drawPts[drawPts.length - 1].x, drawPts[drawPts.length - 1].y);
+      if (Math.hypot(sx - l.sx, sy - l.sy) < 8) return;
+    }
     if (drawPts.length >= 3) {
       const { sx: fx, sy: fy } = worldToScreen(drawPts[0].x, drawPts[0].y);
       // só fecha se clicar EM CIMA do ponto inicial (lotes estreitos: o outro lado pode estar perto)
       closePx = (e.sourceCapabilities && e.sourceCapabilities.firesTouchEvents) ? 14 : 10;
-      if (Math.hypot(sx - fx, sy - fy) < closePx) { finishDrawing(); return; }
+      if (Math.hypot(sx - fx, sy - fy) < closePx) { finishDrawing('clicou no 1º ponto'); return; }
     }
     lastClosedLot = null;
     drawPts.push(screenToWorld(sx, sy));
@@ -2225,9 +2230,8 @@ wrap.addEventListener('dblclick', function(e) {
     }
     return;
   }
-  if (drawMode !== 'draw') return;
-  if (Date.now() - lastFinishT < 800) return;   // já fechou no 1º clique (em cima do ponto inicial)
-  if (drawPts.length >= 3) finishDrawing();
+  // Lote: duplo clique NÃO fecha mais (fechava sozinho quando se clicava rápido nos cantos).
+  // Para fechar: clicar no 1º ponto, ✓ Fechar lote ou Enter.
 });
 
 /* ═══════════════════════════════════════════════════════════════
@@ -3051,7 +3055,7 @@ document.addEventListener('keydown', e => {
   if (drawMode === 'draw') {
     if (e.key === 'Backspace' || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z')) { e.preventDefault(); undoDrawPoint(); }
     else if (e.key === 'Escape') { cancelDrawing(); }
-    else if (e.key === 'Enter') { if (drawPts.length >= 3) finishDrawing(); }
+    else if (e.key === 'Enter') { if (drawPts.length >= 3) finishDrawing('Enter'); }
   } else if (drawMode === 'edit' && selVtx) {
     if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSelectedVertex(); }
     else if (e.key === 'Escape') { selVtx = null; draw(); }
@@ -3361,7 +3365,7 @@ function updateDrawUI() {
   canvas.style.cursor = panMode ? 'grab' : ((drawMode === 'draw' || drawMode === 'scale' || drawMode === 'georef') ? 'crosshair' : 'default');
 }
 
-function finishDrawing() {
+function finishDrawing(how) {
   drawPts = tidyDrawPts(drawPts);
   if (drawPts.length < 3) { showToast('Adicione pelo menos 3 pontos', true); draw(); return; }
   lastFinishT = Date.now();
@@ -3376,7 +3380,7 @@ function finishDrawing() {
   const ha = lotAreaHa(lots[lots.length - 1].pts);
   switchTab('lots');
   if (ha) {
-    showToast(name + ' fechado: ' + ha.toFixed(2) + ' ha · fechou antes da hora? clique ↶ Reabrir lote');
+    showToast(name + ' fechado' + (how ? ' (' + how + ')' : '') + ': ' + ha.toFixed(2) + ' ha · ' + lots[lots.length - 1].pts.length + ' pontos · fechou antes da hora? ↶ Reabrir lote');
     draw();
   } else {
     // Sem GPS e sem escala: pede a escala para poder calcular a área
