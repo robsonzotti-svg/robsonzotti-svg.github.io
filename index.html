@@ -981,6 +981,8 @@ let dragInfo = null;    // {lotIdx, vtxIdx}
 let hoveredVtx = null;
 let hoveredMid = null;   // meio de lado sob o mouse (modo editar)
 let lastFinishT = 0;     // hora em que o último lote foi fechado
+let lastClosedLot = null; // lote recém-fechado (pode ser reaberto com ↶)
+let closePx = 10;        // distância (px) do ponto inicial para fechar clicando nele
 let selVtx = null;      // vértice selecionado no modo Editar {lotIdx, vtxIdx}
 const LOT_COLORS = ['#F0A030','#3090E0','#E03060','#A020F0','#30D0A0','#F0D020'];
 
@@ -1912,7 +1914,7 @@ function draw() {
       ctx.setLineDash([]); ctx.globalAlpha = 1;
       if (mouseWorld && drawPts.length >= 3) {
         const m = worldToScreen(mouseWorld.x, mouseWorld.y);
-        if (Math.hypot(m.sx - f.sx, m.sy - f.sy) < 18) {
+        if (Math.hypot(m.sx - f.sx, m.sy - f.sy) < closePx) {
           ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5;
           ctx.beginPath(); ctx.arc(f.sx, f.sy, 13, 0, Math.PI * 2); ctx.stroke();
         }
@@ -2151,8 +2153,11 @@ wrap.addEventListener('mousedown', function(e) {
     if (e.detail >= 2 && Date.now() - lastFinishT < 800) return;   // 2º clique do duplo clique que fechou o lote
     if (drawPts.length >= 3) {
       const { sx: fx, sy: fy } = worldToScreen(drawPts[0].x, drawPts[0].y);
-      if (Math.hypot(sx - fx, sy - fy) < 18) { finishDrawing(); return; }
+      // só fecha se clicar EM CIMA do ponto inicial (lotes estreitos: o outro lado pode estar perto)
+      closePx = (e.sourceCapabilities && e.sourceCapabilities.firesTouchEvents) ? 14 : 10;
+      if (Math.hypot(sx - fx, sy - fy) < closePx) { finishDrawing(); return; }
     }
+    lastClosedLot = null;
     drawPts.push(screenToWorld(sx, sy));
     draw(); return;
   }
@@ -2969,7 +2974,18 @@ function toggleEditMode() {
 
 /* ── Desfazer / apagar ──────────────────────────────────────── */
 function undoDrawPoint() {
-  if (drawMode !== 'draw' || !drawPts.length) return;
+  if (drawMode !== 'draw') return;
+  if (!drawPts.length) {
+    // lote fechou sem querer: reabre para continuar marcando
+    if (lastClosedLot && lots[lots.length - 1] === lastClosedLot) {
+      lots.pop();
+      drawPts = lastClosedLot.pts.slice();
+      lastClosedLot = null;
+      afterLotsChanged();
+      showToast('Lote reaberto — continue marcando os cantos');
+    }
+    return;
+  }
   drawPts.pop();
   draw();
 }
@@ -3017,7 +3033,10 @@ function updateDrawBar() {
   document.getElementById('drawBarDraw').hidden = !drawing;
   document.getElementById('drawBarEdit').hidden = !editing;
   if (drawing) {
-    document.getElementById('btnUndoPt').disabled = drawPts.length === 0;
+    const reopen = !drawPts.length && lastClosedLot && lots[lots.length - 1] === lastClosedLot;
+    const bu = document.getElementById('btnUndoPt');
+    bu.disabled = !drawPts.length && !reopen;
+    bu.textContent = reopen ? '↶ Reabrir lote' : '↶ Desfazer ponto';
     document.getElementById('btnFinishLot').disabled = drawPts.length < 3;
   }
   if (editing) {
@@ -3348,6 +3367,7 @@ function finishDrawing() {
   lastFinishT = Date.now();
   const name = 'Lote ' + (lots.length + 1);
   lots.push({ pts: drawPts.slice(), name, areaHaOverride: null });
+  lastClosedLot = lots[lots.length - 1];
   recomputeLotLines();
   drawPts = [];
   const btn = document.getElementById('btnShowLots');
@@ -3356,7 +3376,7 @@ function finishDrawing() {
   const ha = lotAreaHa(lots[lots.length - 1].pts);
   switchTab('lots');
   if (ha) {
-    showToast(name + ' desenhado! Área: ' + ha.toFixed(2) + ' ha');
+    showToast(name + ' fechado: ' + ha.toFixed(2) + ' ha · fechou antes da hora? clique ↶ Reabrir lote');
     draw();
   } else {
     // Sem GPS e sem escala: pede a escala para poder calcular a área
